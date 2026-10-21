@@ -1,0 +1,70 @@
+[project]
+name = "ida-pro-mcp"
+version = "2.0.1"
+description = "IDA Pro MCP server (enhanced broker architecture) with stdio launcher"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "mrexodia" },
+    { name = "can1357" },
+    { name = "IDA Pro MCP Contributors" },
+]
+maintainers = [{ name = "QiuChenly" }]
+keywords = ["ida", "mcp", "llm", "plugin"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+]
+dependencies = [
+    "idapro>=0.0.7",
+    "tomli-w>=1.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "coverage>=7.13.4",
+    "jsonschema>=4.0",
+    "mcp>=1.0",
+]
+
+[project.urls]
+Repository = "https://github.com/mrexodia/ida-pro-mcp"
+Issues = "https://github.com/mrexodia/ida-pro-mcp/issues"
+Upstream-Enhancement = "https://github.com/QiuChenly/ida-pro-mcp-enhancement"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["ida_pro_mcp*"]
+
+[tool.uv]
+link-mode = "copy"
+
+[project.scripts]
+ida-pro-mcp = "ida_pro_mcp.server:main"
+idalib-mcp = "ida_pro_mcp.idalib_supervisor:main"
+ida-mcp-test = "ida_pro_mcp.test:main"
+ida-mcp-trace-dump = "ida_pro_mcp.trace_dump:main"
+ida-mcp-launcher = "ida_pro_mcp.launcher:main"
+ida-mcp-setup = "ida_pro_mcp.setup_cli:main"
+
+[tool.pyright]
+include = ["src/ida_pro_mcp"]
+
+[tool.ruff]
+exclude = ["src/ida_pro_mcp/ida_mcp/zeromcp/*.py"]
+
+[tool.coverage.run]
+relative_files = true
+include = ["src/ida_pro_mcp/*"]
+omit = [
+    "src/ida_pro_mcp/ida_mcp/tests/*",
+    "src/ida_pro_mcp/ida_mcp/zeromcp/*",
+]
