@@ -16,13 +16,15 @@
 
 ```bash
 # 1. 安装（装在 IDA 使用的那个 Python 环境里）
-pip install ida-pro-mcp-enhanced
+pip install https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases/latest/download/ida_pro_mcp_enhanced-2.0.1-py3-none-any.whl
 
 # 2. 装 IDA 插件（loader + ida_mcp + broker 三件套）+ 打印客户端配置
 ida-mcp-setup
 
 # 3. 重启 IDA，打开一个数据库，插件会自动连上 broker
 ```
+
+> 也可以从 [Releases 页面](https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases) 下载 wheel 后本地安装。PyPI 上的 `ida-pro-mcp` 是上游 mrexodia 的包（1.4.0，无 broker 架构），**不要**用它。
 
 装完会打印可直接粘贴的 MCP 客户端配置。**推荐用 launcher 那一版**：
 
@@ -63,12 +65,13 @@ ida-mcp-setup
 
 ### 关于包名
 
-PyPI 上的 `ida-pro-mcp` 属于原作者 [mrexodia](https://github.com/mrexodia)（只到 1.4.0，**没有** broker 架构和 launcher），本发行版无法使用该名字，因此：
+PyPI 上的 `ida-pro-mcp` 属于原作者 [mrexodia](https://github.com/mrexodia)（只到 1.4.0，**没有** broker 架构和 launcher），本发行版无法使用该名字。三个名字的关系：
 
-| | 名称 |
-| --- | --- |
-| PyPI 包名 | `ida-pro-mcp-enhanced` |
-| Python 模块 | `ida_pro_mcp_enhanced` |
+| | 名称 | 发布位置 |
+| --- | --- | --- |
+| 发行包 | `ida-pro-mcp-enhanced` | GitHub Releases（wheel） |
+| Python 模块 | `ida_pro_mcp_enhanced` | — |
+| DSH 插件 | `dsh-ida-mcp` | [npm](https://www.npmjs.com/package/dsh-ida-mcp) |
 
 模块名与上游刻意不同，避免两个包在 `site-packages` 里互相覆盖文件。如果你之前装过上游的 `ida-pro-mcp`，建议先 `pip uninstall ida-pro-mcp` 再装本包。
 
@@ -77,9 +80,10 @@ PyPI 上的 `ida-pro-mcp` 属于原作者 [mrexodia](https://github.com/mrexodia
 如果你用 [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)，装这个插件就能把 IDA 工具注册成原生工具：
 
 ```bash
-npm install -g dsh-ida-mcp
 dsh plugin install dsh-ida-mcp
 ```
+
+插件会自动找到 PATH 上的 `python` 并拉起 `ida_pro_mcp_enhanced.launcher`。如果你的 IDA 用的是特定解释器（32 位 IDA 常见），设置 `IDA_MCP_PYTHON` 环境变量指定。
 
 详见 [packages/dsh-ida-mcp](./packages/dsh-ida-mcp)。
 
