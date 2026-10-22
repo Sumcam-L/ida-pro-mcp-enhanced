@@ -12,12 +12,10 @@
 
 ---
 
-## 安装（可直接安装的发行版）
-
-本仓库打包成标准 Python wheel，`pip install` 之后一条命令即可完成安装：
+## 快速开始
 
 ```bash
-# 1. 安装（建议装在 IDA 使用的那个 Python 环境里）
+# 1. 安装（装在 IDA 使用的那个 Python 环境里）
 pip install ida_pro_mcp-2.0.1-py3-none-any.whl
 
 # 2. 装 IDA 插件（loader + ida_mcp + broker 三件套）+ 打印客户端配置
@@ -73,7 +71,23 @@ pip uninstall ida-pro-mcp   # 再移除 Python 包
 
 ---
 
-## 一、项目亮点（本增强版 vs. 上游）
+## 一、本发行版修了什么（vs. QiuChenly 增强版）
+
+如果你只是想在 IDA 里顺畅用 MCP，下面这三条是最实际的差别：
+
+| 问题 | 上游表现 | 本发行版 |
+| --- | --- | --- |
+| `search_text` 搜不存在的 token | **~235 秒**，随后 broker 超时丢弃请求，IDA 主线程仍在跑 | **~15 秒**，带时间预算返回 partial 游标 |
+| `search_text` 搜常见符号 | ~70 秒 | ~15 秒 |
+| `survey_binary` 扫十万函数级大库 | 主线程卡几十分钟，且**无法取消** | **< 1 秒**直接拒答，并建议改用窄工具 |
+| 工具超时 | `sys.setprofile` 抛异常 → traceback 构建期无限递归，100% CPU（旧版）；`PyThreadState_SetAsyncExc` → 主线程锁死，之后所有调用永久阻塞（另一旧版） | 超时只让**调用方**放弃等待，主线程安全跑完 |
+| 安装 | 需手工处理 `site-packages` 与插件目录两份副本 | `pip install` + `ida-mcp-setup` 一条命令 |
+
+这些改动的来龙去脉见 [PATCHES.md](./PATCHES.md)。
+
+---
+
+## 二、架构亮点（继承自 QiuChenly 增强版）
 
 - **Broker 进程纯路由**：独立监听 `127.0.0.1:13337`，IDA 实例与所有 MCP 客户端都只和它交互；多 Cursor 窗口、多 IDA 同时挂载不再抢端口。
 - **客户端侧 SQLite 静态缓存（`xxx.idb.mcp.sqlite`）**：IDA 插件在 IDA idle 时由守护线程把字符串、函数、全局、导入、交叉引用全量落地到 IDB 旁的 SQLite 文件。
@@ -84,7 +98,7 @@ pip uninstall ida-pro-mcp   # 再移除 Python 包
 
 ---
 
-## 二、环境要求
+## 三、环境要求
 
 - Python 3.11+（建议使用 `idapyswitch` 切换到最新 Python）
 - IDA Pro 8.3+（推荐 9.0+），**不支持 IDA Free**
@@ -92,30 +106,44 @@ pip uninstall ida-pro-mcp   # 再移除 Python 包
 
 ---
 
-## 三、安装
+## 四、安装
+
+### 从 wheel 安装（推荐）
 
 ```bash
-pip uninstall ida-pro-mcp
-pip install https://github.com/QiuChenly/ida-pro-mcp-enhancement/archive/refs/heads/main.zip
+pip install ida_pro_mcp-2.0.1-py3-none-any.whl
+ida-mcp-setup
 ```
 
-本地开发安装：
+`ida-mcp-setup` 会做三件事：把 `ida_mcp.py`（loader）、`ida_mcp/`（75 个工具实现）、`broker/`（缓存守护线程与接管层）铺到 IDA 插件目录，打印各 MCP 客户端的可粘贴配置，并用 `--check` 可随时体检。
+
+### 从源码安装
 
 ```bash
-cd ida-pro-mcp-enhancement && uv venv && uv pip install -e .
+git clone https://github.com/Sumcam-L/ida-pro-mcp-enhanced
+cd ida-pro-mcp-enhanced
+bash scripts/build.sh          # 产出 dist/*.whl
+pip install dist/*.whl
+ida-mcp-setup
 ```
 
-配置 MCP 客户端和 IDA 插件：
+开发模式（改代码即时生效）：
 
 ```bash
-ida-pro-mcp --install
+cd ida-pro-mcp-enhanced && uv venv && uv pip install -e .
 ```
 
-安装完成后请**完全重启** IDA 和 MCP 客户端。某些客户端（如 Claude Desktop）在后台常驻，需要从托盘图标退出。IDA 插件菜单需要先加载一个二进制文件才会出现。
+### 装完必须做的事
+
+**完全重启** IDA 和 MCP 客户端。某些客户端（如 Claude Desktop）在后台常驻，需要从托盘图标退出。IDA 插件菜单需要先加载一个二进制文件才会出现。
+
+### 为什么插件目录和 Python 包都要装
+
+这两处是**两份独立副本**，不是软链接：Python 包供 broker 与 stdio server 使用（提供 62 个工具的 schema 与路由），IDA 插件目录供 IDA 进程内的插件使用（真正调用 IDAPython API）。改一处而不装另一处，会出现「工具列表是对的、调用却报错」这类难查问题。`ida-mcp-setup` 一次装齐两边。
 
 ---
 
-## 四、总体架构
+## 五、总体架构
 
 下面这张图描述本增强版的所有运行时组件与数据流。
 
@@ -173,7 +201,7 @@ flowchart LR
 
 ---
 
-## 五、一次 tools/call 的完整时序
+## 六、一次 tools/call 的完整时序
 
 ```mermaid
 sequenceDiagram
@@ -215,7 +243,7 @@ sequenceDiagram
 
 ---
 
-## 六、SQLite 缓存守护线程生命周期
+## 七、SQLite 缓存守护线程生命周期
 
 ```mermaid
 stateDiagram-v2
@@ -242,7 +270,7 @@ stateDiagram-v2
 
 ---
 
-## 七、使用方式（Broker 模式）
+## 八、使用方式（Broker 模式）
 
 多窗口 Cursor、多个 IDA 实例并用时，请务必**先启动 Broker**，再启动客户端。
 
@@ -295,7 +323,7 @@ IDB 打开后，在 IDA 中按 Ctrl+Alt+M，连接地址填 `http://<机器IP>:1
 
 ---
 
-## 八、命令行参数
+## 九、命令行参数
 
 | 参数 | 说明 |
 |------|------|
@@ -328,7 +356,7 @@ IDA_MCP_BROKER_URL=http://127.0.0.1:13337 ida-pro-mcp
 
 ---
 
-## 九、缓存相关工具
+## 十、缓存相关工具
 
 | 工具 | 语义 | 错误行为 |
 |------|------|---------|
@@ -348,7 +376,7 @@ IDA_MCP_BROKER_URL=http://127.0.0.1:13337 ida-pro-mcp
 
 ---
 
-## 十、非缓存工具总览
+## 十一、非缓存工具总览
 
 以下工具仍走 IDA API 正常 dispatch，由插件进程通过 `@idasync` 在 IDA 主线程执行。
 
@@ -409,7 +437,7 @@ IDA_MCP_BROKER_URL=http://127.0.0.1:13337 ida-pro-mcp
 
 ---
 
-## 十一、MCP 资源（只读状态）
+## 十二、MCP 资源（只读状态）
 
 按 MCP 规范暴露的 `ida://` 资源：
 
@@ -427,7 +455,7 @@ IDA_MCP_BROKER_URL=http://127.0.0.1:13337 ida-pro-mcp
 
 ---
 
-## 十二、SSE 传输与无头 idalib
+## 十三、SSE 传输与无头 idalib
 
 本增强版的 `ida-pro-mcp` 主入口默认通过 stdio 连接 MCP 客户端，Broker 模式 (`--broker`) 则直接提供 HTTP 端点（默认 `0.0.0.0:13337`），单端口承载全部功能：
 
@@ -501,7 +529,7 @@ worker 控制：
 
 ---
 
-## 十三、提示工程建议
+## 十四、提示工程建议
 
 大模型在进制转换、数学计算、混淆代码上容易出错。务必：
 
@@ -525,7 +553,7 @@ worker 控制：
 
 ---
 
-## 十四、常见问题
+## 十五、常见问题
 
 **Q：IDA 插件连接失败 / `instance_list` 空？**
 
@@ -564,7 +592,7 @@ uv pip install -e .
 
 ---
 
-## 十五、开发
+## 十六、开发
 
 核心实现位置：
 
@@ -609,7 +637,7 @@ uv run coverage report --show-missing
 
 ---
 
-## 十六、与其它 IDA MCP 的差异
+## 十七、与其它 IDA MCP 的差异
 
 市面上已有数个 IDA Pro MCP 实现，本仓库在上游 [mrexodia/ida-pro-mcp](https://github.com/mrexodia/ida-pro-mcp) 的基础上重点做了两件事：
 
@@ -627,7 +655,7 @@ uv run coverage report --show-missing
 
 ---
 
-## 十七、许可证
+## 十八、许可证
 
 见 [LICENSE](./LICENSE)。
 
@@ -635,7 +663,10 @@ uv run coverage report --show-missing
 
 ## 署名
 
-- **增强版维护者**：[QiuChenly](https://github.com/QiuChenly)
+- **本项目（可安装发行版）**：[Sumcam-L](https://github.com/Sumcam-L)
+- **架构增强版**：[QiuChenly](https://github.com/QiuChenly)
 - **上游原作者**：[mrexodia](https://github.com/mrexodia)
 
-本项目在上游 `ida-pro-mcp` 的基础上由 QiuChenly 增强实现 Broker 路由架构、SQLite 静态缓存接管与严格类型协议等特性。如在论文、博客或工具中使用，请同时署名上游作者与本增强版作者。
+本项目在 QiuChenly 的增强版基础上，把原先散落在 `site-packages` 与 IDA 插件目录的两份不同步副本合并为单一源码树，修复了超时机制导致主线程锁死等问题，并打包成可直接 `pip install` 的发行版。
+
+如在论文、博客或工具中使用，请同时署名三层作者。完整归属与第三方文档说明见 [NOTICE](./NOTICE)。

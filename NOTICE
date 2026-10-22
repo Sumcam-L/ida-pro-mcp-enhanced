@@ -1,0 +1,62 @@
+IDA Pro MCP (enhanced / portable distribution)
+==============================================
+
+This project is a redistribution and packaging effort built on top of two
+upstream projects. Please preserve all attributions below.
+
+1. mrexodia/ida-pro-mcp
+   https://github.com/mrexodia/ida-pro-mcp
+   Original author: Duncan Ogilvie (mrexodia), can1357 and contributors.
+   Licensed MIT (see LICENSE).
+
+2. QiuChenly/ida-pro-mcp-enhancement
+   https://github.com/QiuChenly/ida-pro-mcp-enhancement
+   Broker routing architecture, client-side SQLite static cache takeover
+   layer, strict typed protocol, and the idalib headless mode.
+
+The original ida_mcp.py plugin and the API modules are distributed under
+the MIT license reproduced in LICENSE (Copyright (c) 2025 Duncan Ogilvie).
+
+
+Changes in this distribution
+----------------------------
+
+This distribution merges five local modifications that previously lived in
+two mutually unsynchronized copies (site-packages vs the IDA plugins dir),
+and makes the whole thing installable from a wheel:
+
+  - ida_mcp/api_core.py          search_text rewritten: chunked rendering +
+                                 in-memory matching with a time budget
+  - ida_mcp/sync.py              panic-patch 4/5: no idc.batch() re-entry,
+                                 timeout enforced by the waiting thread
+  - ida_mcp/api_survey.py        panic-patch 2: refuse survey_binary on
+                                 very large databases
+  - broker/cache_handlers.py     filter/paging semantics for the cache layer
+  - ida_mcp.py                   also unload the broker package on reconnect
+
+Packaging work (original to this distribution):
+
+  - ida_pro_mcp/launcher.py      stdio launcher moved into the package and
+                                 de-hardcoded; ida-mcp-launcher command
+  - ida_pro_mcp/setup_cli.py     ida-mcp-setup one-shot installer
+  - serverInfo.version           read from package metadata, not hardcoded
+  - installer.py                 also install/remove the broker/ package
+
+See PATCHES.md for the reasoning behind each change.
+
+
+Third-party documentation
+-------------------------
+
+skills/idapython/docs/ contains IDAPython API documentation generated from
+IDA Pro. Those files carry the notice:
+
+    Hex-Rays Decompiler project Copyright (c) 1990-2025 Hex-Rays
+    ALL RIGHTS RESERVED.
+
+They are included verbatim from the upstream repositories for offline API
+reference by the agent skills. They are NOT covered by this project's MIT
+license, and IDA Pro / Hex-Rays remain the property of Hex-Rays SA.
+
+This project is not affiliated with Hex-Rays SA. It ships no IDA Pro code
+and requires a separately licensed IDA Pro installation.
