@@ -1,16 +1,17 @@
 [project]
-name = "ida-pro-mcp"
+name = "ida-pro-mcp-enhanced"
 version = "2.0.1"
-description = "IDA Pro MCP server (enhanced broker architecture) with stdio launcher"
+description = "IDA Pro MCP server (enhanced broker architecture) with stdio launcher and one-shot installer"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
     { name = "mrexodia" },
     { name = "can1357" },
     { name = "IDA Pro MCP Contributors" },
+    { name = "QiuChenly" },
 ]
-maintainers = [{ name = "QiuChenly" }]
-keywords = ["ida", "mcp", "llm", "plugin"]
+maintainers = [{ name = "Sumcam-L" }]
+keywords = ["ida", "mcp", "llm", "plugin", "reverse-engineering"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
@@ -32,8 +33,10 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/mrexodia/ida-pro-mcp"
-Issues = "https://github.com/mrexodia/ida-pro-mcp/issues"
+Homepage = "https://github.com/Sumcam-L/ida-pro-mcp-enhanced"
+Repository = "https://github.com/Sumcam-L/ida-pro-mcp-enhanced"
+Issues = "https://github.com/Sumcam-L/ida-pro-mcp-enhanced/issues"
+Upstream = "https://github.com/mrexodia/ida-pro-mcp"
 Upstream-Enhancement = "https://github.com/QiuChenly/ida-pro-mcp-enhancement"
 
 [build-system]
@@ -42,29 +45,29 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["ida_pro_mcp*"]
+include = ["ida_pro_mcp_enhanced*"]
 
 [tool.uv]
 link-mode = "copy"
 
 [project.scripts]
-ida-pro-mcp = "ida_pro_mcp.server:main"
-idalib-mcp = "ida_pro_mcp.idalib_supervisor:main"
-ida-mcp-test = "ida_pro_mcp.test:main"
-ida-mcp-trace-dump = "ida_pro_mcp.trace_dump:main"
-ida-mcp-launcher = "ida_pro_mcp.launcher:main"
-ida-mcp-setup = "ida_pro_mcp.setup_cli:main"
+ida-pro-mcp = "ida_pro_mcp_enhanced.server:main"
+idalib-mcp = "ida_pro_mcp_enhanced.idalib_supervisor:main"
+ida-mcp-test = "ida_pro_mcp_enhanced.test:main"
+ida-mcp-trace-dump = "ida_pro_mcp_enhanced.trace_dump:main"
+ida-mcp-launcher = "ida_pro_mcp_enhanced.launcher:main"
+ida-mcp-setup = "ida_pro_mcp_enhanced.setup_cli:main"
 
 [tool.pyright]
-include = ["src/ida_pro_mcp"]
+include = ["src/ida_pro_mcp_enhanced"]
 
 [tool.ruff]
-exclude = ["src/ida_pro_mcp/ida_mcp/zeromcp/*.py"]
+exclude = ["src/ida_pro_mcp_enhanced/ida_mcp/zeromcp/*.py"]
 
 [tool.coverage.run]
 relative_files = true
-include = ["src/ida_pro_mcp/*"]
+include = ["src/ida_pro_mcp_enhanced/*"]
 omit = [
-    "src/ida_pro_mcp/ida_mcp/tests/*",
-    "src/ida_pro_mcp/ida_mcp/zeromcp/*",
+    "src/ida_pro_mcp_enhanced/ida_mcp/tests/*",
+    "src/ida_pro_mcp_enhanced/ida_mcp/zeromcp/*",
 ]

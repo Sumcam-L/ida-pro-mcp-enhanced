@@ -1,0 +1,40 @@
+# dsh-ida-mcp bundle patch
+#
+# Registers one @deepseek-ai/dsh-mcp-client instance that connects to the
+# local IDA Pro MCP broker through the stdio launcher shipped inside the
+# ida-pro-mcp-enhanced Python package (ida_pro_mcp_enhanced.launcher).
+#
+# The launcher starts the broker on demand (http://127.0.0.1:13337), registers
+# this client, and stops the broker when the last client exits. IDA GUI
+# instances with the ida_mcp.py plugin connect to the same broker, so DSH and
+# every other MCP client share one set of IDA sessions.
+#
+# Every tool appears under the `ida` namespace: mcp__ida__decompile,
+# mcp__ida__xrefs_to, mcp__ida__instance_list, ...
+#
+# Requirements:
+#   1. Python 3.11+ on PATH (the one IDA uses), with the package installed:
+#        pip install ida-pro-mcp-enhanced
+#   2. The IDA plugin installed:
+#        ida-mcp-setup
+#   3. IDA running with a database open.
+#
+# Overridable via environment:
+#   IDA_MCP_PYTHON - python.exe that has ida-pro-mcp-enhanced installed.
+#                    Default: `python` from PATH, which resolves to whatever
+#                    interpreter your shell and IDA share.
+- insert:
+    - id: mcp-ida
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: ida
+        transport: stdio
+        command: !!js process.env.IDA_MCP_PYTHON || 'python'
+        args:
+          - '-m'
+          - 'ida_pro_mcp_enhanced.launcher'
+        # IDA operations (analysis, decompilation, surveys) can take minutes.
+        toolCallTimeoutMs: 180000
+        # If the broker cannot start (e.g. IDA is not reachable) the web app
+        # still boots; tools register later once the connection recovers.
+        failOnStartupError: false

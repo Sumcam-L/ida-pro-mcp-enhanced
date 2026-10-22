@@ -6,7 +6,7 @@ import sys
 from ..framework import test
 
 try:
-    from ida_pro_mcp import idalib_server
+    from ida_pro_mcp_enhanced import idalib_server
 except ImportError:
     _parent = os.path.join(os.path.dirname(__file__), "..", "..")
     sys.path.insert(0, _parent)

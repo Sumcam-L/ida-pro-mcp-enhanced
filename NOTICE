@@ -36,13 +36,32 @@ and makes the whole thing installable from a wheel:
 
 Packaging work (original to this distribution):
 
-  - ida_pro_mcp/launcher.py      stdio launcher moved into the package and
+  - launcher.py                  stdio launcher moved into the package and
                                  de-hardcoded; ida-mcp-launcher command
-  - ida_pro_mcp/setup_cli.py     ida-mcp-setup one-shot installer
+  - setup_cli.py                 ida-mcp-setup one-shot installer
   - serverInfo.version           read from package metadata, not hardcoded
   - installer.py                 also install/remove the broker/ package
+  - packages/dsh-ida-mcp/        the DeepSeek Harness plugin (npm: dsh-ida-mcp)
 
 See PATCHES.md for the reasoning behind each change.
+
+
+Naming
+------
+
+This distribution is published under its own names because the upstream
+names are taken:
+
+  PyPI package   ida-pro-mcp-enhanced
+                 (ida-pro-mcp on PyPI belongs to mrexodia and stops at 1.4.0;
+                  it contains no broker/ and no launcher)
+  Python module  ida_pro_mcp_enhanced
+                 (deliberately different from upstream's ida_pro_mcp so that
+                  installing both packages cannot overwrite each other's files)
+  npm package    dsh-ida-mcp
+
+The IDA-side plugin still uses the top-level module names ida_mcp and broker,
+because that is how IDA loads plugins from %APPDATA%\Hex-Rays\IDA Pro\plugins.
 
 
 Third-party documentation

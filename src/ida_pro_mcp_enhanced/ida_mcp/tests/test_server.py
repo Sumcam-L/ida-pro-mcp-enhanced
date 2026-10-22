@@ -9,8 +9,8 @@ from ..framework import test
 from ..rpc import MCP_SERVER, MCP_UNSAFE
 
 try:
-    from ida_pro_mcp import server
-    from ida_pro_mcp.broker import manager as broker_manager
+    from ida_pro_mcp_enhanced import server
+    from ida_pro_mcp_enhanced.broker import manager as broker_manager
 except ImportError:
     _parent = os.path.join(os.path.dirname(__file__), "..", "..")
     sys.path.insert(0, _parent)

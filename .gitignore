@@ -26,3 +26,9 @@ dist/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Node / npm（DSH 插件）
+node_modules/
+*.tgz
+package-lock.json
+.npm/

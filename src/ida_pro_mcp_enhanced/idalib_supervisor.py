@@ -285,7 +285,7 @@ class IdalibSupervisor:
         cmd = [
             sys.executable,
             "-m",
-            "ida_pro_mcp.idalib_server",
+            "ida_pro_mcp_enhanced.idalib_server",
             "--host",
             "127.0.0.1",
             "--port",

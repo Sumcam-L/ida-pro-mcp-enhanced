@@ -19,17 +19,17 @@ from typing import Annotated, Any, NotRequired, Optional, TypedDict
 import idapro
 import ida_loader
 
-from ida_pro_mcp.ida_mcp import MCP_SERVER, MCP_UNSAFE
-from ida_pro_mcp.ida_mcp.api_core import (
+from ida_pro_mcp_enhanced.ida_mcp import MCP_SERVER, MCP_UNSAFE
+from ida_pro_mcp_enhanced.ida_mcp.api_core import (
     ServerHealthResult,
     ServerWarmupResult,
     server_health,
     server_warmup,
 )
-from ida_pro_mcp.ida_mcp.profile import apply_profile, load_profile
-from ida_pro_mcp.ida_mcp.rpc import get_current_transport_session_id, set_download_base_url, tool
-from ida_pro_mcp.ida_mcp.http import IdaMcpHttpRequestHandler
-from ida_pro_mcp.idalib_session_manager import get_session_manager
+from ida_pro_mcp_enhanced.ida_mcp.profile import apply_profile, load_profile
+from ida_pro_mcp_enhanced.ida_mcp.rpc import get_current_transport_session_id, set_download_base_url, tool
+from ida_pro_mcp_enhanced.ida_mcp.http import IdaMcpHttpRequestHandler
+from ida_pro_mcp_enhanced.idalib_session_manager import get_session_manager
 
 
 class IdalibContextFields(TypedDict):
@@ -368,7 +368,7 @@ def _register_to_coordinator(host: str, port: int, binary_path: str = "") -> boo
     """向协调服务器注册此实例（固定端口127.0.0.1:8801）"""
     global _coordinator_instance_id
     try:
-        from ida_pro_mcp.ida_mcp.api_instances import register_to_coordinator
+        from ida_pro_mcp_enhanced.ida_mcp.api_instances import register_to_coordinator
 
         _coordinator_instance_id = _generate_instance_id(port)
         result = register_to_coordinator(
@@ -397,7 +397,7 @@ def _unregister_from_coordinator():
     if _coordinator_instance_id is None:
         return
     try:
-        from ida_pro_mcp.ida_mcp.api_instances import unregister_from_coordinator
+        from ida_pro_mcp_enhanced.ida_mcp.api_instances import unregister_from_coordinator
         unregister_from_coordinator()
         logger.info("已从协调服务器注销: %s", _coordinator_instance_id)
         _coordinator_instance_id = None
@@ -677,7 +677,7 @@ def main():
 
     _install_context_activation_hooks()
 
-    from ida_pro_mcp.ida_mcp import trace
+    from ida_pro_mcp_enhanced.ida_mcp import trace
     trace.install_tracer()
     logger.info("Tracing tools/call to IDB netnode %s", trace.IDB_NETNODE_NAME)
 

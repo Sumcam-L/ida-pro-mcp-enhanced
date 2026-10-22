@@ -47,7 +47,7 @@ def launcher_config() -> dict:
     """
     return {
         "command": sys.executable,
-        "args": ["-m", "ida_pro_mcp.launcher"],
+        "args": ["-m", "ida_pro_mcp_enhanced.launcher"],
     }
 
 

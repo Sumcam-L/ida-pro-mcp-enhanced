@@ -22,7 +22,7 @@ from .client import BrokerClient
 from .cache_types import ToolInputSchema, ToolSchema
 
 if TYPE_CHECKING:
-    from ida_pro_mcp.ida_mcp.zeromcp.jsonrpc import JsonRpcResponse
+    from ida_pro_mcp_enhanced.ida_mcp.zeromcp.jsonrpc import JsonRpcResponse
 else:
     JsonRpcResponse = dict
 

@@ -6,7 +6,7 @@ Usage:
     ida-mcp-test tests/crackme03.elf --pattern "*meta*"
 
 With coverage:
-    uv run coverage run -m ida_pro_mcp.test crackme03.elf
+    uv run coverage run -m ida_pro_mcp_enhanced.test crackme03.elf
     uv run coverage report
     uv run coverage html
 """
@@ -34,7 +34,7 @@ Examples:
   ida-mcp-test tests/crackme03.elf --stop-on-failure
 
 With coverage:
-  uv run coverage run -m ida_pro_mcp.test crackme03.elf
+  uv run coverage run -m ida_pro_mcp_enhanced.test crackme03.elf
   uv run coverage report --show-missing
   uv run coverage html && open htmlcov/index.html
         """,
@@ -108,7 +108,7 @@ With coverage:
 
     try:
         # Import test framework AFTER idalib is initialized
-        from ida_pro_mcp.ida_mcp.framework import run_tests, TESTS
+        from ida_pro_mcp_enhanced.ida_mcp.framework import run_tests, TESTS
 
         # Import all test modules to register @test decorators.
         # Use pkgutil discovery so registration works even if tests package
@@ -116,7 +116,7 @@ With coverage:
         import importlib
         import pkgutil
 
-        tests_pkg_name = "ida_pro_mcp.ida_mcp.tests"
+        tests_pkg_name = "ida_pro_mcp_enhanced.ida_mcp.tests"
         tests_pkg = importlib.import_module(tests_pkg_name)
         if hasattr(tests_pkg, "__path__"):
             for mod in pkgutil.iter_modules(tests_pkg.__path__):
@@ -125,7 +125,7 @@ With coverage:
 
         if not TESTS:
             print(
-                "Warning: no tests were registered from ida_pro_mcp.ida_mcp.tests",
+                "Warning: no tests were registered from ida_pro_mcp_enhanced.ida_mcp.tests",
                 file=sys.stderr,
             )
 
@@ -161,7 +161,7 @@ With coverage:
             )
 
         if args.mcp_mode:
-            from ida_pro_mcp.ida_mcp.tests.mcp_mode import mcp_mode
+            from ida_pro_mcp_enhanced.ida_mcp.tests.mcp_mode import mcp_mode
 
             print("[MCP] Running tests in end-to-end MCP mode.")
             with mcp_mode():

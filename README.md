@@ -16,7 +16,7 @@
 
 ```bash
 # 1. 安装（装在 IDA 使用的那个 Python 环境里）
-pip install ida_pro_mcp-2.0.1-py3-none-any.whl
+pip install ida-pro-mcp-enhanced
 
 # 2. 装 IDA 插件（loader + ida_mcp + broker 三件套）+ 打印客户端配置
 ida-mcp-setup
@@ -31,7 +31,7 @@ ida-mcp-setup
   "mcpServers": {
     "ida-pro-mcp": {
       "command": "<your-python>",
-      "args": ["-m", "ida_pro_mcp.launcher"]
+      "args": ["-m", "ida_pro_mcp_enhanced.launcher"]
     }
   }
 }
@@ -61,11 +61,33 @@ ida-mcp-setup
 | `IDA_MCP_TOOL_TIMEOUT_SEC` | `60` | 单次工具调用等待上限 |
 | `IDA_MCP_SURVEY_MAX_FUNCS` | `50000` | 超过则 `survey_binary` 直接拒答（避免卡死大库） |
 
+### 关于包名
+
+PyPI 上的 `ida-pro-mcp` 属于原作者 [mrexodia](https://github.com/mrexodia)（只到 1.4.0，**没有** broker 架构和 launcher），本发行版无法使用该名字，因此：
+
+| | 名称 |
+| --- | --- |
+| PyPI 包名 | `ida-pro-mcp-enhanced` |
+| Python 模块 | `ida_pro_mcp_enhanced` |
+
+模块名与上游刻意不同，避免两个包在 `site-packages` 里互相覆盖文件。如果你之前装过上游的 `ida-pro-mcp`，建议先 `pip uninstall ida-pro-mcp` 再装本包。
+
+### 配套的 DSH 插件
+
+如果你用 [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)，装这个插件就能把 IDA 工具注册成原生工具：
+
+```bash
+npm install -g dsh-ida-mcp
+dsh plugin install dsh-ida-mcp
+```
+
+详见 [packages/dsh-ida-mcp](./packages/dsh-ida-mcp)。
+
 ### 卸载
 
 ```bash
-ida-mcp-setup --uninstall   # 只移除 IDA 插件
-pip uninstall ida-pro-mcp   # 再移除 Python 包
+ida-mcp-setup --uninstall        # 先移除 IDA 插件
+pip uninstall ida-pro-mcp-enhanced   # 再移除 Python 包
 ```
 
 
@@ -111,7 +133,7 @@ pip uninstall ida-pro-mcp   # 再移除 Python 包
 ### 从 wheel 安装（推荐）
 
 ```bash
-pip install ida_pro_mcp-2.0.1-py3-none-any.whl
+pip install ida-pro-mcp-enhanced
 ida-mcp-setup
 ```
 

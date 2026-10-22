@@ -1,11 +1,11 @@
 """缓存模块协议类型 (TypedDict)
 
 所有 Broker 端 / IDA 插件端共享的请求 / 响应协议类型集中放在这里。
-Broker 进程只 import 本文件即可，不应 import `ida_pro_mcp.ida_mcp` 下任何
+Broker 进程只 import 本文件即可，不应 import `ida_pro_mcp_enhanced.ida_mcp` 下任何
 模块，以免触发 `idaapi` 等 IDA 专属依赖的加载。
 
 本文件独立重声明了必要的 JSON-RPC TypedDict，避免通过
-`ida_pro_mcp.ida_mcp.zeromcp.jsonrpc` 这条路径经过 `ida_mcp/__init__.py`
+`ida_pro_mcp_enhanced.ida_mcp.zeromcp.jsonrpc` 这条路径经过 `ida_mcp/__init__.py`
 间接加载 IDA 模块。
 """
 
@@ -15,7 +15,7 @@ from typing import Any, Literal, NotRequired, TypeAlias, TypedDict
 
 
 # ---------------------------------------------------------------------------
-# JSON-RPC (与 ida_pro_mcp.ida_mcp.zeromcp.jsonrpc 协议兼容，独立声明)
+# JSON-RPC (与 ida_pro_mcp_enhanced.ida_mcp.zeromcp.jsonrpc 协议兼容，独立声明)
 # ---------------------------------------------------------------------------
 
 JsonRpcId: TypeAlias = str | int | float | None

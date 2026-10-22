@@ -15,6 +15,11 @@ from typing import BinaryIO, Optional
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 
+# 包名与模块名故意不同：
+#   PyPI 包名  ida-pro-mcp-enhanced   （ida-pro-mcp 属于上游 mrexodia，发不上去）
+#   模块名     ida_pro_mcp_enhanced   （与官方包区分，避免 pip 互相覆盖文件）
+_PACKAGE_NAME = "ida-pro-mcp-enhanced"
+
 
 def _package_version() -> str:
     """实际安装版本，而不是写死的常量。
@@ -23,25 +28,26 @@ def _package_version() -> str:
     "明明装了 2.0.1，却报 1.0.0"。
     """
     try:
-        from importlib.metadata import PackageNotFoundError, version
+        from importlib.metadata import version
 
-        return version("ida-pro-mcp")
+        return version(_PACKAGE_NAME)
     except Exception:  # PackageNotFoundError, or running from a source tree
         return "0.0.0+source"
 
+
 if __name__ == "__main__" or __package__ is None:
     sys.path.insert(0, os.path.dirname(SCRIPT_DIR))
-    from ida_pro_mcp.broker.manager import (
+    from ida_pro_mcp_enhanced.broker.manager import (
         get_broker_client,
         register_broker_tools,
         setup_dispatch_proxy,
     )
-    from ida_pro_mcp.install import (
+    from ida_pro_mcp_enhanced.install import (
         install_ida_plugin,
         install_mcp_servers,
         print_mcp_config,
     )
-    from ida_pro_mcp.tool_registry import (
+    from ida_pro_mcp_enhanced.tool_registry import (
         ToolDef,
         parse_all_api_files,
         tool_to_mcp_schema,

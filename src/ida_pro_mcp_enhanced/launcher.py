@@ -134,7 +134,7 @@ class LauncherConfig:
         return [
             PYTHON_EXE,
             "-m",
-            "ida_pro_mcp.server",
+            "ida_pro_mcp_enhanced.server",
             "--broker",
             "--port",
             str(self.broker_port),
@@ -145,7 +145,7 @@ class LauncherConfig:
         return [
             PYTHON_EXE,
             "-m",
-            "ida_pro_mcp.server",
+            "ida_pro_mcp_enhanced.server",
             "--broker-url",
             self.broker_url,
         ]
@@ -369,7 +369,7 @@ def unregister_client(config: LauncherConfig, client_pid: int) -> None:
 # ---------------------------------------------------------------------------
 # stdio 通道隔离
 #
-# 旧实现直接让 ida_pro_mcp.server 继承本进程(launcher)的 stdin/stdout/stderr。
+# 旧实现直接让 ida_pro_mcp_enhanced.server 继承本进程(launcher)的 stdin/stdout/stderr。
 # 那些句柄其实是宿主(Node)那头的管道：宿主 kill 掉 launcher 之后，stdin/stdout
 # 仍然被孙进程握着，宿主那侧的可读流永远等不到 EOF，"任务收尾"就被拖过 10 秒
 # 宽限期(desktop update: graceful deadline exceeded)。

@@ -149,7 +149,7 @@ def test_bundled_profiles_reference_known_tools():
     import os
 
     registered = set(MCP_SERVER.tools.methods)
-    # repo-root/profiles relative to src/ida_pro_mcp/ida_mcp/tests/test_profile.py
+    # repo-root/profiles relative to src/ida_pro_mcp_enhanced/ida_mcp/tests/test_profile.py
     here = Path(__file__).resolve()
     root = here.parents[4]
     for name in ("readonly.txt", "triage.txt"):

@@ -91,8 +91,8 @@ def test(*, binary: str = "", skip: bool = False) -> Callable:
     def decorator(func: Callable) -> Callable:
         # Extract module category from function's module name
         # Handles both inline tests (api_core) and separate test files (test_api_core)
-        # e.g., "ida_pro_mcp.ida_mcp.api_core" -> "api_core"
-        # e.g., "ida_pro_mcp.ida_mcp.tests.test_api_core" -> "api_core"
+        # e.g., "ida_pro_mcp_enhanced.ida_mcp.api_core" -> "api_core"
+        # e.g., "ida_pro_mcp_enhanced.ida_mcp.tests.test_api_core" -> "api_core"
         module_name = func.__module__
         if "." in module_name:
             category = module_name.rsplit(".", 1)[-1]
