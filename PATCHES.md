@@ -176,3 +176,30 @@ broker 侧 60 秒超时后请求被丢弃，但 IDA 主线程还在跑那个 C �
 - `type_apply_batch`：edits / stop_on_error
 
 **验证**：8 项逻辑单测（正确键放行、拼错键报错、非 dict 报错、空 batch 放行）。
+
+---
+
+## 9. 缓存层 filter 语义对齐原生实现（v2.0.5）
+
+**症状**：同一个 filter，走缓存和走原生结果不一致。正则过滤明显少返回，某些 pattern 直接 0 条。
+
+**根因**：缓存的 7 个工具（find_regex / entity_query / list_funcs / list_globals / imports / imports_query / refresh_cache）在 `broker/cache_handlers.py` 里另写了一套 filter→SQL 翻译，和 `utils.pattern_filter` 的语义有三处偏差。
+
+实测差异（修复前）：
+
+| pattern | 原生 | 缓存 | 原因 |
+| --- | --- | --- | --- |
+| `/create/` | 3 | 1 | 原生 `flags or re.IGNORECASE`，无 flag 时默认忽略大小写 |
+| `/CREATE/` | 3 | 0 | 同上 |
+| `/Cre.*e/` | 3 | 2 | 同上 |
+| `[abc]` | 1 | 0 | 缓存多判了 `[`，把字面量当字符类 |
+| `a[bc]d` | 1 | 0 | 同上 |
+| `-1:10` | filter | 分页 offset=-1 | 缓存正则写成 `(-?\d+)` |
+
+**修复**（`cache_handlers.py`）：
+
+1. 正则分支：无 flag（或只有未知 flag）时回退成忽略大小写，用分组内联 `(?:...)` 形式避免前置 flag 影响 `^`/`\A` 锚点
+2. glob 判定：只在含 `*` 或 `?` 时成立，与原生一致；`_glob_to_regex` 内部仍保留 `[...]` 处理（供 `*[Aa]dd*` 这类组合使用）
+3. `_LIST_QUERY_RE`：`(-?\d+)` 改为 `(\d+)`，与 `utils._LIST_QUERY_OFFSET_COUNT_RE` 一致
+
+**验证**：20 项 filter 对比 + 8 项分页对比，原生与缓存全部一致。

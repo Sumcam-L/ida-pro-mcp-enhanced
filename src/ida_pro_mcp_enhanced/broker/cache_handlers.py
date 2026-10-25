@@ -61,7 +61,11 @@ CACHE_TOOL_NAMES: frozenset[str] = frozenset(
 )
 
 # 上游 utils.parse_list_query 的 "offset:count" 简写。
-_LIST_QUERY_RE = re.compile(r"^\s*(-?\d+)\s*:\s*(-?\d+)\s*$")
+#
+# 必须与 utils._LIST_QUERY_OFFSET_COUNT_RE 完全一致：那边是 (\d+)，不接受负号。
+# 之前这里写成 (-?\d+)，于是 query="-1:10" 在缓存层被当成「offset=-1 的分页」，
+# 而在原生实现里只是一个普通 filter 字符串 —— 同一个输入两套结果。
+_LIST_QUERY_RE = re.compile(r"^\s*(\d+)\s*:\s*(\d+)\s*$")
 
 _VALID_ENTITY_KINDS: frozenset[str] = frozenset(
     {"strings", "functions", "globals", "imports"}
@@ -208,18 +212,23 @@ def _do_cache_status(_args: CacheStatusArgs, db_path: str) -> CacheStatusResult:
 # 下面的解析把上游语义翻译成 SQLite 查询。匹配规则与 utils.pattern_filter 对齐：
 #   "sub"         -> 子串、大小写不敏感
 #   "*sub*"/"a?b" -> glob（fnmatch，大小写不敏感）
-#   "/re/flags"   -> 正则（flags 支持 i/m/s，默认大小写敏感）
+#   "/re/flags"   -> 正则；**没有 flag 时上游默认大小写不敏感**
+#                    （源码是 re.compile(body, flags or re.IGNORECASE)），
+#                    写了 m 但没写 i 时才真正敏感。
 # ---------------------------------------------------------------------------
 
 
 def _pattern_to_sql_regex(pattern: str) -> str | None:
     """把上游 filter 语法翻译成 Python re 表达式（交给 REGEXP 运算符）。
 
-    与 utils.pattern_filter 的语义保持一致：
-      * 子串 / glob：大小写不敏感（上游对两者都做 .lower() 比较）；
-      * /re/flags：默认大小写敏感，只有带 i 才不敏感。
-    SQLite 的 REGEXP 只吃正则，所以都要先转成正则；子串用 re.escape
-    保证元字符不被误解释。
+    必须与 utils.pattern_filter 逐条一致，否则同一个 filter 在
+    「走缓存」和「走原生」两条路径上会给出不同结果。
+
+    1. 子串 / glob：大小写不敏感（上游对两者都 .lower() 后再比）；
+    2. /re/flags：上游是 re.compile(body, flags or re.IGNORECASE)，
+       所以**没有 flag 时是忽略大小写的**。这里之前漏了这一条，
+       导致 /abc/ 在缓存层变成大小写敏感，比原生少返回结果。
+    3. glob 只在含 * 或 ? 时才成立；单独的 [ ] 上游按普通子串处理。
     """
     if not pattern:
         return None
@@ -230,13 +239,18 @@ def _pattern_to_sql_regex(pattern: str) -> str | None:
         last = pattern.rfind("/")
         body = pattern[1:last]
         flag_str = pattern[last + 1:]
-        prefix = ""
-        if flag_str:
-            inline = "".join(ch for ch in "ims" if ch in flag_str)
-            if inline:
-                prefix = "(?" + inline + ")"
-        return prefix + body
-    if "*" in pattern or "?" in pattern or "[" in pattern:
+        chars = "".join(ch for ch in "ims" if ch in flag_str)
+        if not chars:
+            # 上游：flags or re.IGNORECASE。没有可用 flag（含只写了未知 flag）
+            # 时默认忽略大小写；而 "/abc/m" 只有 m、没有 i，上游此时是敏感的，
+            # 这里同样不回退成 i。
+            chars = "i"
+        # 用分组内联 flag 而非前置 (?i)：body 可能以 ^ 或 \A 开头，
+        # 前置 flag 会改变锚点语义。
+        return "(?" + chars + ":" + body + ")"
+    # 只有 * 和 ? 触发 glob。上游不看 [ —— 单独的 "[abc]" 是普通子串，
+    # 之前这里多判了 "[", 把字面量搜索错误地变成字符类匹配。
+    if "*" in pattern or "?" in pattern:
         return _glob_to_regex(pattern)
     return _case_insensitive(re.escape(pattern))
 
