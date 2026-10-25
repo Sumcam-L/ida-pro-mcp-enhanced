@@ -157,6 +157,30 @@ class RenameBatch(TypedDict, total=False):
     allow_overwrite: Annotated[bool, "Force overwrite existing names"]
 
 
+def reject_unknown_keys(
+    tool: str, batch: object, allowed: set[str] | frozenset[str]
+) -> None:
+    """批量参数里出现拼错的键时直接报错，而不是静默返回 0 条。
+
+    背景：rename / type_apply_batch 这类接口是 *逐个* batch.get("func") 取字段的，
+    拼错一个键（例如写成 functions / locals 复数形式）不会触发任何错误，只会让
+    summary.total 变成 0。调用方看到 total=0 会以为"参数结构不对"，然后反复换
+    嵌套写法去试，实际只要改一个字母。
+
+    参数错误就该立刻报错，并把合法键名一起回显。
+    """
+    if not isinstance(batch, dict):
+        raise IDAError(
+            f"{tool}: batch must be an object, got {type(batch).__name__}"
+        )
+    unknown = sorted(k for k in batch if k not in allowed)
+    if unknown:
+        raise IDAError(
+            f"{tool}: unknown batch key(s) {unknown}; "
+            f"supported keys: {sorted(allowed)}"
+        )
+
+
 class StructFieldQuery(TypedDict):
     """Struct field query for xrefs"""
 

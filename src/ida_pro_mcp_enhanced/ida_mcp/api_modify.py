@@ -28,6 +28,7 @@ from .utils import (
     RenameBatch,
     DefineOp,
     UndefineOp,
+    reject_unknown_keys,
 )
 
 
@@ -309,6 +310,23 @@ def rename(
     ],
 ) -> RenameResult:
     """批量重命名: 函数、全局变量、局部变量、栈变量。支持 dry_run 等选项。"""
+
+    # 合法键：注意 local / func 都是单数，写 locals / functions 会命中这里。
+    reject_unknown_keys(
+        "rename",
+        batch,
+        {
+            "func",
+            "data",
+            "global",
+            "globals",
+            "local",
+            "stack",
+            "stop_on_error",
+            "dry_run",
+            "allow_overwrite",
+        },
+    )
 
     stop_on_error = bool(batch.get("stop_on_error", False))
     dry_run = bool(batch.get("dry_run", False))

@@ -150,3 +150,29 @@ broker 侧 60 秒超时后请求被丢弃，但 IDA 主线程还在跑那个 C �
 **效果**：工具总数 66 -> 64，工具目录里不再有这两个陷阱。
 
 **验证**：从源码加载确认两个工具已消失、instance_list 仍能返回 2 个实例；重启 broker 后实测 tools/list 为 64 个。
+
+---
+
+## 8. 批量接口的拼写校验（v2.0.4）
+
+**症状**：`rename` 一直返回 `total: 0`，看不出哪里错。
+
+**根因**：`rename` 的 `batch` 是逐个 `batch.get("func")` 取字段的，拼错键（写成 `functions` / `locals` 复数）不会报错，只会让 `summary.total` 变成 0。调用方看到 0 会以为是嵌套格式不对，然后反复试各种写法。
+
+实测对照（GameCore，dry_run）：
+
+| 传入 | 结果 |
+| --- | --- |
+| `{"batch": {"functions": [...]}}` | total: 0（静默） |
+| `{"batch": {"locals": [...]}}` | total: 0（静默） |
+| `{"batch": {}}` | total: 0（静默） |
+| `{"batch": {"func": [...]}}` | total: 1 ✅ |
+
+**修复**：`utils.reject_unknown_keys()` 在参数解析前校验键名，不合法就直接抛 `IDAError` 并回显合法键列表。接入 `rename` 与 `type_apply_batch` 两个批量接口。
+
+合法键：
+
+- `rename`：func / data / global / globals / local / stack / stop_on_error / dry_run / allow_overwrite（注意 local、func 都是单数）
+- `type_apply_batch`：edits / stop_on_error
+
+**验证**：8 项逻辑单测（正确键放行、拼错键报错、非 dict 报错、空 batch 放行）。

@@ -28,6 +28,7 @@ from .utils import (
     TypeQuery,
     TypeApplyBatch,
     EnumUpsert,
+    reject_unknown_keys,
 )
 from . import compat
 from .compat import tinfo_get_udm
@@ -1034,6 +1035,9 @@ def type_apply_batch(
     ],
 ) -> TypeApplyBatchResult:
     """Apply multiple type edits and return aggregate status."""
+    # 只认 edits / stop_on_error；拼错键会让 applied/failed 都是 0。
+    reject_unknown_keys("type_apply_batch", batch, {"edits", "stop_on_error"})
+
     normalized_edits = normalize_dict_list(
         batch.get("edits", []), _parse_addr_type_shorthand
     )
