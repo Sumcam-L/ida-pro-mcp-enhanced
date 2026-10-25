@@ -1,83 +1,94 @@
 # dsh-ida-mcp
 
-把 [ida-pro-mcp](https://github.com/Sumcam-L/ida-pro-mcp-enhanced) 的 IDA Pro
-broker 桥接进 [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)：
-把约 66 个 IDA 工具注册成原生的 `mcp__ida__*` 工具，模型可以直接反编译、查交叉引用、
-改名、看反汇编。
+Bridge the [IDA Pro MCP](https://github.com/Sumcam-L/ida-pro-mcp-enhanced) broker
+into [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/), exposing
+~66 IDA tools as native `mcp__ida__*` tools: decompile, cross-references, rename,
+disassembly, and more.
 
-## 它解决什么
+## Why a broker
 
-IDA 的 MCP 生态里通常是「一个客户端一个 broker」，多开几个 AI 工具就会抢端口、
-抢同一个 IDB。本项目复用 ida-pro-mcp 的 broker 架构：
+Most IDA MCP setups spawn one broker per client, so opening a second AI tool fights
+over the port and over the same IDB. This plugin reuses the ida-pro-mcp broker:
 
 ```
 DSH (mcp__ida__* tools)
-   │  @deepseek-ai/dsh-mcp-client (stdio)
-   ▼
-ida_pro_mcp_enhanced.launcher ──启动/共享──► Broker (127.0.0.1:13337)
-                                        │  SSE 路由
-                                        ▼
-                        IDA GUI 实例 (ida_mcp.py 插件，每个带一个 IDB)
+   |  @deepseek-ai/dsh-mcp-client (stdio)
+   v
+ida_pro_mcp_enhanced.launcher --> Broker (127.0.0.1:13337)
+                                     |  SSE routing
+                                     v
+                    IDA GUI instances (ida_mcp.py plugin, one per IDB)
 ```
 
-broker 按需拉起，最后一个客户端退出后自动停止。**多个 MCP 客户端（DSH、Cursor、
-Claude Desktop…）共用同一个 broker 和同一批 IDA 实例**，不会互相抢。
+The broker starts on demand and is shared by every MCP client (DSH, Cursor,
+Claude Desktop, ...). It keeps running as long as any IDA instance is attached,
+even if all MCP clients disconnect -- so reconnecting a client never kicks your
+IDA sessions offline.
 
-## 安装
+## Install
+
+### 1. Python side (broker + stdio server + IDA plugin)
+
+The package is not on PyPI: the name `ida-pro-mcp` there belongs to upstream
+mrexodia (1.4.0, no broker). Install from the GitHub release instead:
 
 ```bash
-# 1. 装 Python 侧（broker + stdio server + IDA 插件）
-pip install ida-pro-mcp-enhanced
+pip install https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases/latest/download/ida_pro_mcp_enhanced-2.0.2-py3-none-any.whl
 ida-mcp-setup
+```
 
-# 2. 装本插件
+### 2. This plugin
+
+```bash
 dsh plugin install dsh-ida-mcp
 ```
 
-然后在 IDA 里打开一个数据库，**完全重启** DSH。
+Then open a database in IDA and fully restart DSH.
 
-## 前置条件
+## Requirements
 
-| 条件 | 说明 |
+| Requirement | Notes |
 | --- | --- |
-| Python 3.11+ | 需要在 PATH 上，**且要和 IDA 用的是同一个解释器** |
-| `ida-pro-mcp` | `pip install ida-pro-mcp-enhanced` |
-| IDA 插件 | `ida-mcp-setup` 安装，重启 IDA 生效 |
-| IDA Pro | 8.3+（不支持 IDA Free，它没有插件 API） |
+| Python 3.11+ | Must be on PATH and be the interpreter IDA uses |
+| `ida-pro-mcp-enhanced` | Installed via the wheel above |
+| IDA plugin | `ida-mcp-setup` installs it; restart IDA afterwards |
+| IDA Pro | 8.3+ (IDA Free has no plugin API) |
 
-## 配置
+## Configuration
 
-插件默认用 PATH 上的 `python`。如果你的 IDA 用的是特定解释器（常见于 32 位 IDA），
-设置环境变量：
+The plugin runs `python -m ida_pro_mcp_enhanced.launcher` using `python` from PATH.
+If IDA uses a specific interpreter (common with 32-bit IDA), point it explicitly:
 
 ```bash
 set IDA_MCP_PYTHON=D:\Program Files\Python\Python311-32\python.exe
 ```
 
-其他可调项见 [ida-pro-mcp 文档](https://github.com/Sumcam-L/ida-pro-mcp-enhanced#环境变量)。
+Other tunables are documented in the
+[ida-pro-mcp-enhanced README](https://github.com/Sumcam-L/ida-pro-mcp-enhanced#环境变量).
 
-## 用法示例
+## Usage
 
-在 DSH 会话里直接说：
+Just ask in a DSH session:
 
-- 「看看现在连着哪些 IDA 实例」 → `mcp__ida__instance_list`
-- 「反编译 main」 → `mcp__ida__decompile`
-- 「谁调用了这个函数」 → `mcp__ida__xrefs_to`
-- 「把所有 xxx 开头的函数找出来」 → `mcp__ida__list_funcs`
+- "which IDA instances are connected" -> `mcp__ida__instance_list`
+- "decompile main" -> `mcp__ida__decompile`
+- "who calls this function" -> `mcp__ida__xrefs_to`
 
-## 常见问题
+## Troubleshooting
 
-**工具列表是空的**
-IDA 没开，或插件没连上 broker。打开 IDA → 加载数据库 → 按 `Ctrl+Alt+M` 手动重连。
+**Tool list is empty**
+IDA is not running, or the plugin has not connected. Open IDA, load a database,
+then press `Ctrl+Alt+M` to reconnect manually.
 
-**调用报 `No module named ida_pro_mcp_enhanced`**
-PATH 上的 `python` 没装包，或者 IDA 用的解释器和 PATH 上的不是同一个。用
-`IDA_MCP_PYTHON` 明确指定。
+**`No module named ida_pro_mcp_enhanced`**
+The `python` on PATH does not have the package, or IDA uses a different
+interpreter than PATH. Set `IDA_MCP_PYTHON`.
 
-**调用报 `not connected` 但 IDA 开着**
-插件加载失败。看 IDA 的 Output 窗口有没有 `[MCP]` 开头的报错，通常是没跑 `ida-mcp-setup`。
+**Calls fail with 'not connected' while IDA is open**
+The plugin failed to load. Check IDA's Output window for a `[MCP]` error, usually
+caused by not running `ida-mcp-setup`.
 
 ## License
 
-MIT。归属于 [ida-pro-mcp](https://github.com/mrexodia/ida-pro-mcp) 与其增强版
-[ida-pro-mcp-enhancement](https://github.com/QiuChenly/ida-pro-mcp-enhancement)。
+MIT. Upstream: [ida-pro-mcp](https://github.com/mrexodia/ida-pro-mcp) and its
+enhancement [ida-pro-mcp-enhancement](https://github.com/QiuChenly/ida-pro-mcp-enhancement).

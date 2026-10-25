@@ -1,72 +1,90 @@
 # dsh-ida-mcp
 
-把 opencode 里那套 IDA Pro MCP（`ida-pro-mcp` broker + IDA GUI 插件 `ida_mcp.py`）
-桥接进 DeepSeek Harness 的插件。复用 DSH 内置的
-[`@deepseek-ai/dsh-mcp-client`](https://deepseek-harness.github.io/deepseek-harness/)，
-broker 的启动/停止、多客户端共享、IDA 实例注册全部沿用现有的
-`ida_mcp_launcher.py` —— 不新增任何 Python 代码。
+把 [IDA Pro MCP](https://github.com/Sumcam-L/ida-pro-mcp-enhanced) 的 broker 桥接进
+[DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)，把约 66 个
+IDA 工具注册成原生的 `mcp__ida__*` 工具：反编译、交叉引用、改名、反汇编等。
 
-## 原理
+## 为什么需要 broker
+
+多数 IDA MCP 方案是「一个客户端一个 broker」，多开几个 AI 工具就会抢端口、抢同一个 IDB。
+本插件复用 ida-pro-mcp 的 broker 架构：
 
 ```
-DSH (mcp__ida__* tools)
-   │  @deepseek-ai/dsh-mcp-client (stdio)
-   ▼
-ida_mcp_launcher.py ──启动/共享──► Broker (http://127.0.0.1:13337)
-                                      │  SSE 路由
-                                      ▼
-                        IDA GUI 实例 (ida_mcp.py 插件, 每个一个 IDB)
+DSH (mcp__ida__* 工具)
+   |  @deepseek-ai/dsh-mcp-client (stdio)
+   v
+ida_pro_mcp_enhanced.launcher --> Broker (127.0.0.1:13337)
+                                   |  SSE 路由
+                                   v
+                  IDA GUI 实例（ida_mcp.py 插件，每个带一个 IDB）
 ```
 
-- 工具以 `mcp__ida__<工具名>` 形式注册进 `ctx.tools`（如 `mcp__ida__decompile`、
-  `mcp__ida__xrefs_to`、`mcp__ida__instance_list`、`mcp__ida__survey_binary` 等约 60+ 个，
-  unsafe 工具已由 broker 过滤）。
-- 与 opencode 共享同一个 broker 和同一批 IDA 实例：任一端连上时 broker 自动拉起，
-  最后一个客户端退出后自动停止。
-- IDA 工具调用超时默认 180 秒（分析/反编译可能较慢）。
+broker 按需拉起，被所有 MCP 客户端（DSH、Cursor、Claude Desktop…）共享。
+**只要还有 IDA 实例挂着，broker 就会一直运行**，即使所有 MCP 客户端都断开——
+所以客户端重连不会把正在用的 IDA 实例踢下线。
+
+## 安装
+
+### 1. Python 侧（broker + stdio server + IDA 插件）
+
+这个包**不在 PyPI 上**：`ida-pro-mcp` 那个名字属于上游 mrexodia（1.4.0，没有 broker）。
+从 GitHub Release 安装：
+
+```bash
+pip install https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases/latest/download/ida_pro_mcp_enhanced-2.0.2-py3-none-any.whl
+ida-mcp-setup
+```
+
+### 2. 本插件
+
+```bash
+dsh plugin install dsh-ida-mcp
+```
+
+然后在 IDA 里打开一个数据库，**完全重启** DSH。
 
 ## 前置条件
 
-- 已安装 `ida_pro_mcp`（Python 包）与 IDA GUI 插件 `ida_mcp.py`（本机路径见下）。
-- IDA 实例不需要预先打开；但调用具体工具前，需要先打开对应二进制（IDA 会自动连上 broker）。
+| 条件 | 说明 |
+| --- | --- |
+| Python 3.11+ | 需要在 PATH 上，**且要和 IDA 用的是同一个解释器** |
+| `ida-pro-mcp-enhanced` | 用上面的 wheel 安装 |
+| IDA 插件 | `ida-mcp-setup` 安装，之后重启 IDA |
+| IDA Pro | 8.3+（IDA Free 没有插件 API） |
 
-## 安装（到 dsh web profile）
+## 配置
 
-```bash
-# 1. 在 profile 的 package.json 增加依赖与 bundle：
-#    dependencies:  "dsh-ida-mcp": "link:E:/WorkSpace/Tools/dsh-ida-mcp"
-#    dsh.profile.bundles 追加: "dsh-ida-mcp"
-# 2. 安装并重启：
-dsh plugin --profile web install
-# 重启 web（dsb web / 重启服务）后，模型即可看到 mcp__ida__* 工具
-```
-
-路径可用环境变量覆盖（不设置则用默认值）：
-
-| 变量 | 默认值 |
-|---|---|
-| `IDA_MCP_PYTHON` | `D:\Program Files\Python\Python311-32\python.exe` |
-| `IDA_MCP_LAUNCHER` | `C:\Users\Sumcam\.config\opencode\scripts\ida_mcp_launcher.py` |
-
-## 验证
+插件用 PATH 上的 `python` 执行 `python -m ida_pro_mcp_enhanced.launcher`。
+如果你的 IDA 用的是特定解释器（32 位 IDA 常见），显式指定：
 
 ```bash
-# 端到端冒烟：走与 DSH 完全相同的 SDK 栈连接 launcher，列出工具目录
-node test/smoke.mjs
+set IDA_MCP_PYTHON=D:\Program Files\Python\Python311-32\python.exe
 ```
 
-web 启动日志应出现 `mcp-client(ida)` 的连接与工具同步记录；会话中让模型调用
-`mcp__ida__instance_list` 可看到当前连接的 IDA 实例。
+其他可调项见
+[ida-pro-mcp-enhanced 的 README](https://github.com/Sumcam-L/ida-pro-mcp-enhanced#环境变量)。
 
-## 使用示例
+## 用法
 
-1. 在 IDA 中打开目标二进制（如 `GameCore_XP2_FinalRelease.dll`），插件自动连 broker。
-2. 在 DSH 会话中让模型：
-   - `mcp__ida__instance_list` 查看实例
-   - `mcp__ida__survey_binary` 总览
-   - `mcp__ida__decompile` 反编译 `main` / 指定函数
-   - `mcp__ida__xrefs_to` / `mcp__ida__list_funcs` 等常规逆向操作
+在 DSH 会话里直接说：
+
+- 「看看连着哪些 IDA 实例」 -> `mcp__ida__instance_list`
+- 「反编译 main」 -> `mcp__ida__decompile`
+- 「谁调用了这个函数」 -> `mcp__ida__xrefs_to`
+
+## 常见问题
+
+**工具列表是空的**
+IDA 没开，或插件没连上 broker。打开 IDA、加载数据库，然后按 `Ctrl+Alt+M` 手动重连。
+
+**报 `No module named ida_pro_mcp_enhanced`**
+PATH 上的 `python` 没装这个包，或者 IDA 用的解释器和 PATH 上的不是同一个。
+设置 `IDA_MCP_PYTHON` 指定。
+
+**IDA 开着但调用报 not connected**
+插件加载失败。看 IDA 的 Output 窗口有没有 `[MCP]` 开头的报错，通常是没跑 `ida-mcp-setup`。
 
 ## License
 
-MIT
+MIT。上游：[ida-pro-mcp](https://github.com/mrexodia/ida-pro-mcp) 及其增强版
+[ida-pro-mcp-enhancement](https://github.com/QiuChenly/ida-pro-mcp-enhancement)。
