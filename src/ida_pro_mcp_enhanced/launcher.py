@@ -302,6 +302,21 @@ def start_broker(config: LauncherConfig) -> subprocess.Popen:
         )
 
 
+def broker_instance_count(config: LauncherConfig, timeout: float = 1.5) -> Optional[int]:
+    """broker 上当前注册的 IDA 实例数。None 表示 broker 不可达。
+
+    这个数字是"broker 能不能关"的唯一硬依据：只要还有 IDA 挂在上面，
+    关掉 broker 就会把所有 IDA 的 SSE 连接一起打断。
+    """
+    try:
+        with urllib.request.urlopen(f"{config.broker_url}/status", timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, json.JSONDecodeError, AttributeError):
+        return None
+    instances = payload.get("instances")
+    return len(instances) if isinstance(instances, list) else 0
+
+
 def terminate_owned_broker(broker: dict) -> bool:
     pid = broker.get("pid")
     token = broker.get("token")
@@ -345,6 +360,8 @@ def register_client(config: LauncherConfig, client_pid: int) -> None:
                 raise RuntimeError("Unable to identify the started IDA MCP Broker")
             broker = {"pid": process.pid, "token": broker_token, "owned": True}
 
+        # 有人重新连上了，孤儿标记作废。
+        broker.pop("orphaned_since", None)
         state["broker"] = broker
         state["clients"] = [
             client for client in state["clients"] if client.get("pid") != client_pid
@@ -354,16 +371,70 @@ def register_client(config: LauncherConfig, client_pid: int) -> None:
 
 
 def unregister_client(config: LauncherConfig, client_pid: int) -> None:
+    """注销本客户端；这是 broker 生命周期决策的唯一入口。
+
+    ---- 为什么不能"clients 空了就杀 broker" ----
+    state["clients"] 只记录 launcher（MCP 客户端）进程，**不包含 IDA 实例**。
+    旧实现只判断这一项，于是出现下面这条连锁反应：
+
+        DSH 重载插件 / 工具调用超时重连 / DSH 重启
+          -> launcher 进程退出
+          -> clients 变空
+          -> broker 被 SIGTERM
+          -> 所有 IDA 的 SSE 长连接瞬间断开
+          -> IDA 插件按 3s~30s 退避重连，这期间工具调用全部失败
+
+    用户看到的就是"IDA 明明开着，用着用着突然连不上"。
+
+    现在改成：只要 broker 上还有 IDA 实例，broker 必须活着。没有客户端
+    认领时打上 orphaned 标记，留给 reap_orphaned_broker() 按空闲时间清理。
+    """
     with state_lock(config):
         state = read_state(config)
         state["clients"] = [
             client for client in state.get("clients", []) if client.get("pid") != client_pid
         ]
         prune_dead_clients(state)
+
         if not state["clients"]:
-            terminate_owned_broker(state.get("broker", {}))
-            state["broker"] = {"pid": None, "token": None, "owned": False}
+            broker = state.get("broker", {})
+            instances = broker_instance_count(config)
+            if instances:
+                # 还有 IDA 挂着：保留 broker，记为无主，交给空闲清理。
+                broker["orphaned_since"] = time.time()
+                state["broker"] = broker
+            else:
+                terminate_owned_broker(broker)
+                state["broker"] = {"pid": None, "token": None, "owned": False}
         write_state(config, state)
+
+
+def reap_orphaned_broker(config: LauncherConfig, idle_seconds: float = 900.0) -> bool:
+    """清理长期无主且没有 IDA 实例的 broker。
+
+    每次 launcher 启动时调用一次。这样即使用户关掉 DSH 也关了 IDA，
+    残留的 broker 也不会永久占着 13337 端口——但前提是真的没人用了。
+    """
+    with state_lock(config):
+        state = read_state(config)
+        broker = state.get("broker", {})
+        since = broker.get("orphaned_since")
+        if not since:
+            return False
+        if state.get("clients"):
+            return False
+        if broker_instance_count(config):
+            # IDA 又连回来了，恢复为正常状态。
+            broker.pop("orphaned_since", None)
+            state["broker"] = broker
+            write_state(config, state)
+            return False
+        if time.time() - float(since) < idle_seconds:
+            return False
+        terminated = terminate_owned_broker(broker)
+        state["broker"] = {"pid": None, "token": None, "owned": False}
+        write_state(config, state)
+        return terminated
 
 
 # ---------------------------------------------------------------------------
@@ -618,6 +689,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     client_pid = os.getpid()
     registered = False
     try:
+        # 顺手清掉上次留下的孤儿 broker（长时间无客户端、无 IDA 实例）。
+        try:
+            reap_orphaned_broker(config)
+        except Exception:
+            pass
         register_client(config, client_pid)
         registered = True
         return run_stdio_mcp(config)

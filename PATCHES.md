@@ -104,3 +104,33 @@ broker 侧 60 秒超时后请求被丢弃，但 IDA 主线程还在跑那个 C �
 | `ida_pro_mcp/server.py` | `serverInfo.version` 改为读包元数据 | 原写死 `1.0.0`，装了新版本仍报旧版本 |
 | `ida_pro_mcp/installer.py` | 补上 `broker/` 的安装/卸载 | 上游死代码缺 broker，误用会导致缓存类工具 ImportError |
 | `pyproject.toml` | 加 console scripts、显式 packages.find | 让 wheel 可作为独立发行版安装 |
+---
+
+## 6. launcher.py — broker 生命周期修复（v2.0.2）
+
+**症状**：IDA 明明开着，用着用着突然连不上，过一会儿又自己好了。
+
+**根因**：unregister_client() 里只判断 state[clients] 为空就杀掉 broker，
+而 state[clients] **只记录 MCP 客户端（launcher）进程，完全不记录 IDA 实例**。
+
+于是出现这条连锁反应：
+
+    DSH 重载插件 / 工具调用超时重连 / DSH 重启
+      -> launcher 进程退出
+      -> clients 变空
+      -> broker 被 SIGTERM
+      -> 所有 IDA 的 SSE 长连接瞬间断开
+      -> IDA 插件按 3s~30s 退避重连，这期间工具调用全部失败
+
+日志实测：broker 启动 **222 次**、IDA 连接 484 次、断开 334 次 —— 不是偶发，是高频震荡。
+
+**修复**：
+
+- 新增 broker_instance_count()：向 broker /status 查询当前 IDA 实例数
+  - unregister_client() 改为：**只要 broker 上还有 IDA 实例就不许关**，改为打上 orphaned_since 标记
+  - 新增 reap_orphaned_broker()：每次 launcher 启动时清理「无客户端且无 IDA 实例且空闲超过 15 分钟」的孤儿 broker，避免端口被永久占用
+  - register_client() 认领 broker 时清除孤儿标记
+
+**效果**：MCP 客户端断开不再影响已连接的 IDA 实例，DSH 重连时直接复用现有 broker，不再有「断开→重连→重新注册」的空窗期。
+
+**验证**：真实环境直接走 unregister_client，broker 进程存活、2 个 IDA 实例保持连接、orphaned_since 正确设置；恢复注册后标记清除。另有 13 项生命周期单测覆盖。
