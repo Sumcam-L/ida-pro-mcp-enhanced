@@ -98,6 +98,24 @@ register_broker_tools(mcp)
 
 _IDA_API_DIR = os.path.join(SCRIPT_DIR, "ida_mcp")
 _IDA_TOOLS, _IDA_RESOURCES = parse_all_api_files(_IDA_API_DIR)
+
+# ---------------------------------------------------------------------------
+# 剔除旧架构遗留的实例发现工具
+#
+# list_instances / select_instance 是 mrexodia 原始「每个 IDA 插件各开一个
+# HTTP 端口」时代的产物：list_instances 内部调用 discover_instances() 去扫
+# 本机端口，select_instance 据此把后续调用代理到另一个实例。
+#
+# 现在是 broker 纯路由架构：IDA 插件不再监听任何端口，只作为 SSE 客户端挂在
+# broker 上。discover_instances() 扫不到东西，所以这两个工具**永远返回空数组**，
+# 而它们对外表现的语义却是「列出所有 IDA 实例」，极易误导调用方。
+#
+# 实例列表的真实来源是 broker 侧的 instance_list / instance_info
+# （见 register_broker_tools），保留这两个只会让工具目录多两个陷阱。
+# ---------------------------------------------------------------------------
+_LEGACY_INSTANCE_TOOLS = {"list_instances", "select_instance"}
+_IDA_TOOLS = [t for t in _IDA_TOOLS if t.name not in _LEGACY_INSTANCE_TOOLS]
+
 _IDA_TOOL_SCHEMAS = {t.name: tool_to_mcp_schema(t) for t in _IDA_TOOLS}
 
 UNSAFE_TOOLS = {t.name for t in _IDA_TOOLS if t.is_unsafe}

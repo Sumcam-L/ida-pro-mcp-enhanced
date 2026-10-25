@@ -16,7 +16,7 @@
 
 ```bash
 # 1. 安装（装在 IDA 使用的那个 Python 环境里）
-pip install https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases/latest/download/ida_pro_mcp_enhanced-2.0.2-py3-none-any.whl
+pip install https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases/latest/download/ida_pro_mcp_enhanced-2.0.3-py3-none-any.whl
 
 # 2. 装 IDA 插件（loader + ida_mcp + broker 三件套）+ 打印客户端配置
 ida-mcp-setup

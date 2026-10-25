@@ -1,6 +1,6 @@
 [project]
 name = "ida-pro-mcp-enhanced"
-version = "2.0.2"
+version = "2.0.3"
 description = "IDA Pro MCP server (enhanced broker architecture) with stdio launcher and one-shot installer"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -134,3 +134,19 @@ broker 侧 60 秒超时后请求被丢弃，但 IDA 主线程还在跑那个 C �
 **效果**：MCP 客户端断开不再影响已连接的 IDA 实例，DSH 重连时直接复用现有 broker，不再有「断开→重连→重新注册」的空窗期。
 
 **验证**：真实环境直接走 unregister_client，broker 进程存活、2 个 IDA 实例保持连接、orphaned_since 正确设置；恢复注册后标记清除。另有 13 项生命周期单测覆盖。
+
+---
+
+## 7. server.py — 剔除旧架构遗留的实例发现工具（v2.0.3）
+
+**症状**：调用 list_instances 永远返回空数组，明明 IDA 开着好几个。
+
+**根因**：list_instances / select_instance 是 mrexodia 原始「每个 IDA 插件各开一个 HTTP 端口」时代的产物。list_instances 内部调用 discover_instances() 去扫本机端口，select_instance 据此把后续调用代理到另一个实例。
+
+当前是 broker 纯路由架构：IDA 插件不再监听任何端口，只作为 SSE 客户端挂在 broker 上。discover_instances() 扫不到东西，所以这两个工具永远返回空——但对外语义却是「列出所有 IDA 实例」，极易误导调用方。
+
+**修复**：解析完 api 文件后，从 _IDA_TOOLS 中过滤掉 list_instances / select_instance。实例列表的正确来源是 broker 侧的 instance_list / instance_info。
+
+**效果**：工具总数 66 -> 64，工具目录里不再有这两个陷阱。
+
+**验证**：从源码加载确认两个工具已消失、instance_list 仍能返回 2 个实例；重启 broker 后实测 tools/list 为 64 个。
