@@ -1,6 +1,6 @@
 {
   "name": "dsh-ida-mcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "IDA Pro MCP bridge for DeepSeek Harness: connects the local ida-pro-mcp broker into ctx.tools as native mcp__ida__* tools (decompile, xrefs, survey, rename, ...)",
   "type": "module",
   "main": "./lib/index.js",

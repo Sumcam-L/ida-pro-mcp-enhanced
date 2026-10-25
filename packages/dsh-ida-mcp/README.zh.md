@@ -31,7 +31,7 @@ broker 按需拉起，被所有 MCP 客户端（DSH、Cursor、Claude Desktop…
 从 GitHub Release 安装：
 
 ```bash
-pip install https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases/latest/download/ida_pro_mcp_enhanced-2.0.2-py3-none-any.whl
+pip install https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases/latest/download/ida_pro_mcp_enhanced-2.0.3-py3-none-any.whl
 ida-mcp-setup
 ```
 

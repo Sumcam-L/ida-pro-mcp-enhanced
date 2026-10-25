@@ -33,7 +33,7 @@ The package is not on PyPI: the name `ida-pro-mcp` there belongs to upstream
 mrexodia (1.4.0, no broker). Install from the GitHub release instead:
 
 ```bash
-pip install https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases/latest/download/ida_pro_mcp_enhanced-2.0.2-py3-none-any.whl
+pip install https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases/latest/download/ida_pro_mcp_enhanced-2.0.3-py3-none-any.whl
 ida-mcp-setup
 ```
 
