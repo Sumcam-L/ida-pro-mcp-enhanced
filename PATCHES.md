@@ -224,3 +224,39 @@ broker 侧 60 秒超时后请求被丢弃，但 IDA 主线程还在跑那个 C �
 **为什么不做自动正则重试**：会改变匹配语义（想搜 `a|b` 字面量就被误伤），且 0 命中后重扫等于把耗时翻倍。提示 + 明确文档更稳。
 
 **验证**：11 项提示触发用例（该触发的 6 项、不该触发的 5 项）全部符合预期。
+
+---
+
+## 11. 缓存层补上参数校验（v2.0.7）
+
+**症状**：`list_funcs` 传 `{"filter": "*TerrainElement*", "limit": "0:80"}` 会原样返回全表前 N 条，filter 完全不生效，而且不报错。
+
+**根因**：缓存层插在 MCP dispatcher **之前**。`handle_mcp_request` 里先 `is_cache_tool()` 判断，命中就直接 `handle_cache_tool_locally()`，根本走不到 `registry.dispatch` 那套 `unexpected parameters` 校验。
+
+而 `_queries_from_args()` 只认这些参数：
+
+| 参数 | 识别 |
+| --- | --- |
+| `queries` | ✅ 唯一官方名 |
+| `name_pattern` / `offset` / `count` / `limit` | ✅ 历史兼容别名 |
+| `filter` | ❌ 不识别 |
+
+于是 `filter` 被丢弃 → 空查询 → 返回全表。调用方看到一堆无关函数，只会以为「过滤没生效」，想不到是参数名错了。
+
+**修复**：
+
+1. 新增 `_CACHE_TOOL_ARGS`：声明 8 个缓存工具各自接受的参数
+2. 新增 `_reject_unknown_args()`：未知参数返回 -32602，并给出正确写法
+3. 新增 `_reject_bad_numeric_args()`：`limit`/`count`/`offset` 收到 `"0:80"` 这类分页简写时也报错
+
+错误信息长这样：
+
+```
+list_funcs: unrecognized parameter(s) ['filter'].
+  Hint - filter: wrap it: "queries": {"filter": ...}  (or pass "queries": "*Pattern*")
+  Accepted parameters: ['count', 'instance_id', 'limit', 'name_pattern', 'offset', 'queries']
+```
+
+**为什么要报错而不是自动兼容 `filter`**：工具 schema 里只有 `queries`。偷偷接受 `filter` 会让「文档说 queries、实际两种都行」长期并存，问题只是被推迟。报错并给出正确写法，一次就教会。
+
+**验证**：7 项参数校验用例（未知参数、分页简写误用、正确写法、旧别名）全部符合预期。

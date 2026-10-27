@@ -71,6 +71,84 @@ _VALID_ENTITY_KINDS: frozenset[str] = frozenset(
     {"strings", "functions", "globals", "imports"}
 )
 
+# ---------------------------------------------------------------------------
+# 每个缓存工具真正读取的参数
+#
+# 缓存层是插在 MCP dispatcher **之前**的：handle_mcp_request 里先 is_cache_tool()
+# 判断，命中就直接 handle_cache_tool_locally()，根本不经过
+# MCP_SERVER.registry.dispatch 那套 "unexpected parameters" 校验。
+#
+# 后果是参数名写错时没有任何反馈：list_funcs 传 {"filter": ..., "limit": ...}
+# 时 _queries_from_args 读不到 queries，退化成空查询，于是原样返回全表前 N 条。
+# 调用方看到一堆无关函数，只会以为"filter 没生效"，根本想不到是参数名错了。
+#
+# 这里补上同一层校验：不认识就报 -32602，并把正确写法一起回显。
+# ---------------------------------------------------------------------------
+_LIST_PAGE_ARGS: frozenset[str] = frozenset(
+    {"instance_id", "queries", "name_pattern", "offset", "count", "limit"}
+)
+
+_CACHE_TOOL_ARGS: dict[str, frozenset[str]] = {
+    "find_regex": frozenset(
+        {"instance_id", "pattern", "regex", "limit", "offset", "include_xrefs"}
+    ),
+    "entity_query": _LIST_PAGE_ARGS,
+    "list_funcs": _LIST_PAGE_ARGS,
+    "list_globals": _LIST_PAGE_ARGS,
+    "imports": _LIST_PAGE_ARGS,
+    "imports_query": _LIST_PAGE_ARGS,
+    "refresh_cache": frozenset({"instance_id"}),
+    "cache_status": frozenset({"instance_id"}),
+}
+
+# 最常见的两个误用：把 queries 里的字段拍平到顶层。
+_FLAT_ARG_HINT: dict[str, str] = {
+    "filter": 'wrap it: "queries": {"filter": ...}  (or pass "queries": "*Pattern*")',
+    "limit": 'wrap it: "queries": {"count": N}  (or pass "queries": "0:N")',
+    "offset": 'wrap it: "queries": {"offset": N}',
+}
+
+
+def _reject_unknown_args(
+    req_id: JsonRpcId, tool_name: str, raw_args: Mapping[str, Any]
+) -> JsonRpcResponse | None:
+    """参数名不对就立刻报错，而不是静默返回全量数据。"""
+    allowed = _CACHE_TOOL_ARGS.get(tool_name)
+    if allowed is None:
+        return None
+    unknown = sorted(k for k in raw_args if k not in allowed)
+    if not unknown:
+        return None
+    hints = [f"{k}: {_FLAT_ARG_HINT[k]}" for k in unknown if k in _FLAT_ARG_HINT]
+    detail = ("  Hint - " + "; ".join(hints)) if hints else ""
+    return _wrap_err(
+        req_id,
+        -32602,
+        f"{tool_name}: unrecognized parameter(s) {unknown}.{detail}  "
+        f"Accepted parameters: {sorted(allowed)}",
+    )
+
+
+def _reject_bad_numeric_args(
+    req_id: JsonRpcId, tool_name: str, raw_args: Mapping[str, Any]
+) -> JsonRpcResponse | None:
+    """limit/count/offset 收到 "0:80" 这类分页简写时报错。
+
+    _int_or 会把 int("0:80") 失败的情况吞掉并回落默认值，而这里默认值恰好是 0
+    （等于"不限数量"），于是错误输入变成"原样返回全表"，又是一个静默失败。
+    分页简写只属于 queries，必须指回去。
+    """
+    for key in ("limit", "count", "offset"):
+        value = raw_args.get(key)
+        if isinstance(value, str) and ":" in value:
+            return _wrap_err(
+                req_id,
+                -32602,
+                f"{tool_name}: {key}={value!r} is the offset:count shorthand, "
+                f'which only applies to "queries". Use "queries": {value!r} instead.',
+            )
+    return None
+
 
 # ---------------------------------------------------------------------------
 # JSON-RPC 封装
@@ -617,6 +695,16 @@ def handle_cache_tool_locally(req: JsonRpcRequest, idb_path: str) -> JsonRpcResp
     req_id: JsonRpcId = req.get("id")
     tool_name = _get_tool_name(req)
     raw_args = _get_args(req)
+
+    # 缓存层绕过了 registry.dispatch 的参数校验，这里补上：
+    # 参数名写错（例如把 queries 里的字段拍平到顶层）必须立刻报错，
+    # 否则会退化成空查询、返回全表，调用方只会觉得"过滤没生效"。
+    rejected = _reject_unknown_args(req_id, tool_name, raw_args)
+    if rejected is not None:
+        return rejected
+    rejected = _reject_bad_numeric_args(req_id, tool_name, raw_args)
+    if rejected is not None:
+        return rejected
 
     if not idb_path:
         return _wrap_err(
