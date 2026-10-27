@@ -136,6 +136,8 @@ class SearchTextResult(TypedDict, total=False):
     hits: list[SearchTextHit]
     cursor: dict[str, Any]
     error: str
+    # 0 命中且 pattern 明显是正则时的解释性提示（不改变匹配行为）。
+    note: str
 
 
 # Cached strings list: [(ea, text), ...]
@@ -929,6 +931,30 @@ _SEARCH_MAX_BUDGET_SEC = 40.0
 # 命中行里地址前缀的解析（行形如 ".text:0000000140001470  call ..."）。
 _LISTING_ADDR_RE = re.compile(r"^[^\n:]{0,64}:([0-9A-Fa-f]{4,16})\b")
 
+# 仅收录"强正则信号"：| \ ^ $ 以及 .* / .+ 这类组合。
+# 不把裸 . * ( ) [ ] 算进来 —— 符号名里本来就常带它们（Foo.Bar、operator()），
+# 那样会在正常的字面量搜索未命中时刷出无意义的提示。
+_REGEX_HINT_TOKENS = ("|", "\\", "^", "$", ".*", ".+", "(?", "[A-Z", "[a-z", "[0-9")
+
+
+def _regex_literal_hint(pattern: str) -> str | None:
+    """pattern 看着像正则、却被当字面量搜且 0 命中时，返回一句提示。
+
+    典型误用是传 "A|B" 求 OR，但忘了 regex=true：于是整串（含竖线）被当成
+    一个有 8 个字符的字面量，必然搜不到。调用方拿到 0 条后会误判
+    "A 和 B 都不存在"，这是假阴性，比慢查询危险得多。
+    """
+    strong = [t for t in _REGEX_HINT_TOKENS if t in pattern]
+    if not strong:
+        return None
+    shown = ", ".join(repr(t) for t in strong)
+    return (
+        f"no literal match, and pattern contains regex markers ({shown}). "
+        f"It was searched as the plain string {pattern!r}, NOT as a regex. "
+        f"If you meant a regex (e.g. OR groups), retry with regex=true or pass "
+        f"the alternatives separately. A 0 here does NOT prove the symbol is absent."
+    )
+
 
 def _render_listing(ea: int, max_lines: int) -> list[str] | None:
     """Render up to max_lines listing lines starting at ea (colour tags stripped).
@@ -1204,16 +1230,40 @@ def _scan_rendered_block(
 @tool
 @idasync
 def search_text(
-    pattern: Annotated[str, "Text to search for in the rendered listing (literal substring by default)"],
+    pattern: Annotated[
+        str,
+        "要搜的文本。默认按字面量子串匹配（不区分大小写）。"
+        "想用 | 表示 OR、或用分组/字符类/锚点，必须同时传 regex=true；"
+        "否则 'A|B' 会连同竖线一起被当成一个普通字符串去搜，几乎必然 0 命中。",
+    ],
     limit: Annotated[int, "Max hits per page (default: 30, max: 500)"] = 30,
     start: Annotated[str, "Cursor: address to resume from (hex or symbol). Empty = first segment."] = "",
-    regex: Annotated[bool, "Treat pattern as a regex (case-insensitive unless case_sensitive)"] = False,
+    regex: Annotated[
+        bool,
+        "把 pattern 当 Python 正则处理。"
+        "要搜 OR（A|B）、分组（(?:x)）、字符类（[A-Z]）、锚点（^x）时必须置 true。",
+    ] = False,
     case_sensitive: Annotated[bool, "Case-sensitive match (default: false)"] = False,
     include: Annotated[str, "'disasm' | 'comments' | 'all' (default: all)"] = "all",
     code_only: Annotated[bool, "Restrict search to executable segments (default: true)"] = True,
     time_budget_sec: Annotated[float, "Hard wall-clock budget in seconds (default 15, max 40)"] = 0.0,
 ) -> SearchTextResult:
     """Search the rendered listing for text or a regex.
+
+    PATTERN SEMANTICS - read this before concluding a symbol is absent:
+
+      regex=False (default)  literal substring. "Foo|Bar" looks for the eight
+                             characters F,o,o,|,B,a,r in that order - it does
+                             NOT mean "Foo OR Bar". A hit count of 0 here says
+                             nothing about whether Foo or Bar exist.
+      regex=True             Python re syntax. Use it for OR, groups, classes
+                             and anchors:    "TerrainElement|AssetCooker"
+
+    A zero result whose pattern contains | ( ) [ ] \ ^ $ or .* is almost always
+    a forgotten regex=true, not a missing symbol. When that happens this tool
+    returns a "note" field saying so - retry with regex=true before drawing any
+    conclusion. For OR searches, regex=true is cheaper than several literal
+    scans anyway.
 
     Renders the listing block by block (function by function for code) and
     matches in memory instead of using ida_search.find_text(), which is orders
@@ -1333,4 +1383,16 @@ def search_text(
         stats["partial"] = True
         stats["hint"] = "time budget reached; call again with start=cursor.next to continue"
 
-    return {"n": len(hits), "hits": hits, "cursor": cursor, "stats": stats}
+    result: SearchTextResult = {
+        "n": len(hits),
+        "hits": hits,
+        "cursor": cursor,
+        "stats": stats,
+    }
+    # 字面量搜索 0 命中、但 pattern 明显是正则意图时补一句解释。
+    # 只加提示，不自动改成正则 —— 匹配语义保持不变，避免"搜 a|b 字面量"被误伤。
+    if not hits and needle is not None:
+        hint = _regex_literal_hint(pattern)
+        if hint:
+            result["note"] = hint
+    return result
