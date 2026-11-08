@@ -39,31 +39,12 @@ def _fresh_truncated_server() -> McpServer:
     rpc = load_ida_rpc_module()
     srv = rpc.McpServer("truncation-test")
     original = srv.registry.methods["tools/call"]
-    limit = rpc.OUTPUT_LIMIT_MAX_CHARS
 
     def patched(name, arguments=None, _meta=None):
-        response = original(name, arguments, _meta)
-        if response.get("isError"):
-            return response
-        structured = response.get("structuredContent")
-        if structured is None:
-            return response
-        serialized = json.dumps(structured)
-        if len(serialized) <= limit:
-            return response
-        output_id = rpc._generate_output_id()
-        rpc._cache_output(output_id, structured)
-        preview = rpc._truncate_value(structured)
-        download_meta = rpc._build_download_meta(output_id, len(serialized))
-        return {
-            "structuredContent": preview,
-            "content": [
-                {"type": "text", "text": json.dumps(preview, separators=(",", ":"))},
-                {"type": "text", "text": download_meta["download_hint"]},
-            ],
-            "isError": False,
-            "_meta": {"ida_mcp": download_meta},
-        }
+        # Exercise the shipped function, not a copy of it: a hand-written
+        # duplicate here would keep passing after rpc.limit_response_size
+        # regressed.
+        return rpc.limit_response_size(original(name, arguments, _meta))
 
     srv.registry.methods["tools/call"] = patched
     return srv
@@ -239,6 +220,97 @@ class TruncationOverDeeplyNestedDataTests(unittest.TestCase):
         result = call_rpc(srv, "tools/call", name="deep", arguments={})
         Draft202012Validator(tool["outputSchema"]).validate(result["structuredContent"])
 
+
+class TruncationKeepsDataInsteadOfDroppingItTests(unittest.TestCase):
+    """The preview must keep what fits, not cut every list to 10 items.
+
+    Regression for the reported xrefs_to behaviour: the same target returned
+    100 / 100 / 10 xrefs depending only on how many addresses were passed in
+    one call. The old preview capped every list at a fixed 10 items.
+    So an oversized reply was indistinguishable from a target that
+    really has 10 xrefs.
+    """
+
+    @staticmethod
+    def _xref_payload(count: int) -> list[dict]:
+        return [
+            {
+                "addr": hex(0x140001460 + i * 0x10),
+                "xrefs": [{"addr": hex(0x140F98D28 + i), "type": "data", "fn": None}],
+                "more": False,
+            }
+            for i in range(count)
+        ]
+
+    def test_oversized_list_keeps_far_more_than_ten(self):
+        rpc = load_ida_rpc_module()
+        payload = self._xref_payload(900)
+        self.assertGreater(len(json.dumps(payload)), rpc.OUTPUT_LIMIT_MAX_CHARS)
+
+        preview = rpc._truncate_value(payload)
+        self.assertGreater(len(preview), 10)
+        self.assertLessEqual(rpc._json_size(preview), rpc.OUTPUT_LIMIT_MAX_CHARS)
+
+    def test_preview_keeps_a_prefix_in_original_order(self):
+        rpc = load_ida_rpc_module()
+        payload = self._xref_payload(350)
+        preview = rpc._truncate_value(payload)
+        self.assertEqual(preview[0], payload[0])
+        self.assertEqual(preview, payload[: len(preview)])
+
+    def test_budget_is_stable_across_repeated_calls(self):
+        rpc = load_ida_rpc_module()
+        payload = self._xref_payload(400)
+        sizes = {len(rpc._truncate_value(payload)) for _ in range(3)}
+        self.assertEqual(len(sizes), 1, f"preview length varied: {sizes}")
+
+    def test_dict_scalars_are_preserved(self):
+        """Truncation must not hide how much was cut.
+
+        A response carries its own totals (total, more flags); losing them
+        would make a capped reply look complete.
+        """
+        rpc = load_ida_rpc_module()
+        payload = {"target": "0x1", "data": self._xref_payload(600), "total": 600}
+        preview = rpc._truncate_value(payload)
+        self.assertEqual(preview["total"], 600)
+        self.assertEqual(preview["target"], "0x1")
+        self.assertGreater(len(preview["data"]), 10)
+
+    def test_deep_nesting_does_not_drop_siblings(self):
+        rpc = load_ida_rpc_module()
+        payload = [[{"x": i, "s": "y" * 50} for i in range(400)] for _ in range(6)]
+        preview = rpc._truncate_value(payload)
+        self.assertEqual(len(preview), 6, "outer list must survive")
+        self.assertLessEqual(rpc._json_size(preview), rpc.OUTPUT_LIMIT_MAX_CHARS)
+
+
+
+class LimitSemanticsTests(unittest.TestCase):
+    """limit <= 0 must mean the documented default, not the maximum.
+
+    xrefs_to used to turn limit=0 into 1000 while its docstring promised a
+    default of 100, so asking for the default silently returned ten times
+    more rows. Combined with output truncation that produced the observed
+    100 / 100 / 10 reply sizes for what looked like the same query.
+    """
+
+    def test_xrefs_to_non_positive_limit_uses_default(self):
+        import pathlib
+        import sys
+
+        pkg = pathlib.Path(__file__).resolve().parents[1] / "src"
+        sys.path.insert(0, str(pkg))
+        source = (
+            pkg / "ida_pro_mcp_enhanced" / "ida_mcp" / "api_analysis.py"
+        ).read_text(encoding="utf-8")
+
+        start = source.index("def xrefs_to(")
+        end = source.index(chr(10) + "def ", start + 10)
+        body = source[start:end]
+
+        self.assertIn("limit = 100", body)
+        self.assertNotIn("limit <= 0 or limit > 1000", body)
 
 if __name__ == "__main__":
     unittest.main()

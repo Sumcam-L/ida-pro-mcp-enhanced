@@ -1240,7 +1240,13 @@ def xrefs_to(
     """获取交叉引用(引用的目标地址)。"""
     addrs = normalize_list_input(addrs)
 
-    if limit <= 0 or limit > 1000:
+    # A non-positive limit used to mean 1000, which reads as "give me
+    # everything" but silently caps at the maximum. Treat it as the documented
+    # default instead, and clamp the upper bound without pretending it is
+    # unlimited.
+    if limit <= 0:
+        limit = 100
+    if limit > 1000:
         limit = 1000
 
     results = []
@@ -1493,7 +1499,12 @@ def callees(
     """Return unique callees per function, capped by limit."""
     addrs = normalize_list_input(addrs)
 
-    if limit <= 0 or limit > 500:
+    # A non-positive limit means the documented default, matching the other
+    # tools (api_core maps 0 to its default too). Mapping it to the maximum
+    # instead made a "give me the default" call silently return 2.5x more.
+    if limit <= 0:
+        limit = 200
+    if limit > 500:
         limit = 500
 
     results = []
@@ -1579,7 +1590,9 @@ def find_bytes(
     patterns = normalize_list_input(patterns)
 
     # Enforce max limit
-    if limit <= 0 or limit > 10000:
+    if limit <= 0:
+        limit = 1000
+    if limit > 10000:
         limit = 10000
 
     # Build a reusable search closure based on available IDA API
@@ -1754,7 +1767,9 @@ def find(
         targets = [targets]
 
     # Enforce max limit to prevent token overflow
-    if limit <= 0 or limit > 10000:
+    if limit <= 0:
+        limit = 1000
+    if limit > 10000:
         limit = 10000
 
     results = []

@@ -155,21 +155,27 @@ def _reject_bad_numeric_args(
 # ---------------------------------------------------------------------------
 
 
-def _wrap_ok(req_id: JsonRpcId, payload: Mapping[str, Any]) -> JsonRpcResponse:
+def _wrap_ok(req_id: JsonRpcId, payload: Mapping[str, Any] | list[Any]) -> JsonRpcResponse:
     """构建 tools/call 成功响应。
 
     structuredContent 不是可选项：MCP 客户端优先读它，缺失时调用方只能退回
     解析 content[0].text 里的 JSON 字符串。缓存类工具以前只给 content，
     于是同一个工具在不同路径下返回形状不一致（缓存走 text，原生走
     structuredContent），调用方必须为两种情况各写一套解析。
+
+    列表 payload 必须包成 {"result": [...]}：MCP 要求 structuredContent 是
+    对象，而 dict(list_of_pages) 会去迭代元素当作键值对，产生
+    {"data": "next_offset"} 这种垃圾（或者直接抛 ValueError）。
+    这个包装也正是 _mcp_tools_call 对非 dict 结果用的形状。
     """
     text_content: McpTextContent = {
         "type": "text",
         "text": json.dumps(payload, ensure_ascii=False, default=str),
     }
+    structured = dict(payload) if isinstance(payload, Mapping) else {"result": list(payload)}
     result: McpToolCallResult = {
         "content": [text_content],
-        "structuredContent": dict(payload),
+        "structuredContent": structured,
         "isError": False,
     }
     return {"jsonrpc": "2.0", "result": result, "id": req_id}
