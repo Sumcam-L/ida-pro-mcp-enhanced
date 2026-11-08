@@ -88,11 +88,18 @@ _LIST_PAGE_ARGS: frozenset[str] = frozenset(
     {"instance_id", "queries", "name_pattern", "offset", "count", "limit"}
 )
 
+# entity_query 额外接受 kind/regex/segment/include_xrefs：这些字段原本只能
+# 写在 queries 里，于是扁平写法（name_pattern + limit）永远只能查 functions。
+# 想查 globals 必须自己拼 queries 对象，而 kind 写错时又被当成未知参数拒绝。
+_ENTITY_QUERY_ARGS: frozenset[str] = _LIST_PAGE_ARGS | frozenset(
+    {"kind", "regex", "segment", "include_xrefs"}
+)
+
 _CACHE_TOOL_ARGS: dict[str, frozenset[str]] = {
     "find_regex": frozenset(
         {"instance_id", "pattern", "regex", "limit", "offset", "include_xrefs"}
     ),
-    "entity_query": _LIST_PAGE_ARGS,
+    "entity_query": _ENTITY_QUERY_ARGS,
     "list_funcs": _LIST_PAGE_ARGS,
     "list_globals": _LIST_PAGE_ARGS,
     "imports": _LIST_PAGE_ARGS,
@@ -120,6 +127,11 @@ def _reject_unknown_args(
     if not unknown:
         return None
     hints = [f"{k}: {_FLAT_ARG_HINT[k]}" for k in unknown if k in _FLAT_ARG_HINT]
+    if tool_name == "entity_query" and "kind" in unknown:
+        hints.append(
+            "kind: entity_query 接受 kind，取值 "
+            "functions | globals | strings | imports"
+        )
     detail = ("  Hint - " + "; ".join(hints)) if hints else ""
     return _wrap_err(
         req_id,
@@ -441,6 +453,15 @@ def _queries_from_args(args: Mapping[str, Any]) -> list[dict[str, Any]]:
                 if key in args:
                     query["count"] = _int_or(args, key, 0)
                     break
+        # entity_query 专有字段：扁平写法同样要能指定 kind/regex/segment，
+        # 否则 name_pattern + limit 的调用永远只能查 functions 表。
+        for key in ("kind", "regex", "segment"):
+            if not query.get(key) and isinstance(args.get(key), str):
+                query[key] = args[key]
+        # 只有显式传了才写进 query：否则 _do_entity_query 会拿到一个 None，
+        # 而它按 bool 读取，None 会被当成 False（默认是 True）。
+        if "include_xrefs" not in query and "include_xrefs" in args:
+            query["include_xrefs"] = bool(args["include_xrefs"])
     return queries
 
 
