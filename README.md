@@ -16,7 +16,10 @@
 
 ```bash
 # 1. 安装（装在 IDA 使用的那个 Python 环境里）
-pip install https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases/latest/download/ida_pro_mcp_enhanced-2.0.8-py3-none-any.whl
+#    自动取最新 release 的 wheel，不写死版本号
+WHL=$(curl -sL https://api.github.com/repos/Sumcam-L/ida-pro-mcp-enhanced/releases/latest \
+      | grep -o 'https://[^"]*\.whl' | head -1)
+pip install "$WHL"
 
 # 2. 装 IDA 插件（loader + ida_mcp + broker 三件套）+ 打印客户端配置
 ida-mcp-setup
@@ -24,7 +27,20 @@ ida-mcp-setup
 # 3. 重启 IDA，打开一个数据库，插件会自动连上 broker
 ```
 
-> 也可以从 [Releases 页面](https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases) 下载 wheel 后本地安装。PyPI 上的 `ida-pro-mcp` 是上游 mrexodia 的包（1.4.0，无 broker 架构），**不要**用它。
+PowerShell 等价写法：
+
+```powershell
+$whl = (irm https://api.github.com/repos/Sumcam-L/ida-pro-mcp-enhanced/releases/latest).assets |
+       Where-Object { $_.name -like '*.whl' } | Select-Object -First 1 -ExpandProperty browser_download_url
+pip install $whl
+ida-mcp-setup
+```
+
+> 不想跑脚本的话，直接从 [最新 Release 页面](https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases/latest) 手动下载 wheel，再 `pip install <文件>`。
+>
+> `releases/latest/download/<文件名>` 要求文件名逐字一致，而 wheel 文件名带版本号，发一次新版就会 404。上面两种写法都不会有这个问题。
+>
+> PyPI 上的 `ida-pro-mcp` 是上游 mrexodia 的包（1.4.0，无 broker 架构），**不要**用它。
 
 装完会打印可直接粘贴的 MCP 客户端配置。**推荐用 launcher 那一版**：
 

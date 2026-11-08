@@ -28,12 +28,25 @@ broker 按需拉起，被所有 MCP 客户端（DSH、Cursor、Claude Desktop…
 ### 1. Python 侧（broker + stdio server + IDA 插件）
 
 这个包**不在 PyPI 上**：`ida-pro-mcp` 那个名字属于上游 mrexodia（1.4.0，没有 broker）。
-从 GitHub Release 安装：
+装最新 Release 即可，不要写死版本号——wheel 文件名带版本号，写死就会被下一次发版变成 404：
 
 ```bash
-pip install https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases/latest/download/ida_pro_mcp_enhanced-2.0.3-py3-none-any.whl
+# bash / git-bash
+WHL=$(curl -sL https://api.github.com/repos/Sumcam-L/ida-pro-mcp-enhanced/releases/latest \
+      | grep -o 'https://[^"]*\.whl' | head -1)
+pip install "$WHL"
 ida-mcp-setup
 ```
+
+```powershell
+# PowerShell
+$whl = (irm https://api.github.com/repos/Sumcam-L/ida-pro-mcp-enhanced/releases/latest).assets |
+       Where-Object { $_.name -like '*.whl' } | Select-Object -First 1 -ExpandProperty browser_download_url
+pip install $whl
+ida-mcp-setup
+```
+
+也可以直接去 [最新 Release 页面](https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases/latest) 手动下载 wheel。
 
 ### 2. 本插件
 

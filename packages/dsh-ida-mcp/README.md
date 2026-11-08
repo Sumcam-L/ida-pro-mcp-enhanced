@@ -30,12 +30,26 @@ IDA sessions offline.
 ### 1. Python side (broker + stdio server + IDA plugin)
 
 The package is not on PyPI: the name `ida-pro-mcp` there belongs to upstream
-mrexodia (1.4.0, no broker). Install from the GitHub release instead:
+mrexodia (1.4.0, no broker). Install the newest GitHub release instead of
+pinning a version, so a new release never leaves this page pointing at a 404:
 
 ```bash
-pip install https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases/latest/download/ida_pro_mcp_enhanced-2.0.3-py3-none-any.whl
+# bash / git-bash
+WHL=$(curl -sL https://api.github.com/repos/Sumcam-L/ida-pro-mcp-enhanced/releases/latest \
+      | grep -o 'https://[^"]*\.whl' | head -1)
+pip install "$WHL"
 ida-mcp-setup
 ```
+
+```powershell
+# PowerShell
+$whl = (irm https://api.github.com/repos/Sumcam-L/ida-pro-mcp-enhanced/releases/latest).assets |
+       Where-Object { $_.name -like '*.whl' } | Select-Object -First 1 -ExpandProperty browser_download_url
+pip install $whl
+ida-mcp-setup
+```
+
+Or grab the wheel by hand from the [latest release page](https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases/latest).
 
 ### 2. This plugin
 
