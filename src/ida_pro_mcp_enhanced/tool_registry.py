@@ -119,7 +119,8 @@ class TypedDictParser(ast.NodeVisitor):
             if len(schemas) == 1:
                 return schemas[0]
             if schemas:
-                return {"anyOf": schemas}
+                # oneOf, not anyOf — see type_str_to_json_schema below.
+                return {"oneOf": schemas}
         if isinstance(node, ast.Subscript):
             if isinstance(node.value, ast.Name):
                 if node.value.id == "list":
@@ -414,12 +415,19 @@ def type_str_to_json_schema(type_str: str) -> dict:
     type_str = type_str.strip()
     
     # 处理 Union 类型 (list[str] | str)
+    #
+    # oneOf 而不是 anyOf：MCP 客户端把工具 schema 投影成模型可见的 SDK 时，
+    # 只认 type/oneOf/properties/required/additionalProperties/items/enum/const
+    # 这一子集。anyOf 不在子集里，只要 inputSchema 任意一层出现 anyOf，
+    # 整个参数对象就会被渲染成 unknown —— 模型看不到任何参数名，只能猜。
+    # 本文件里 53 个工具（entity_query/type_query/declare_type 等）都是这种
+    # 形状，历史上导致大量 "unexpected parameters" / "missing required"。
     if " | " in type_str:
         parts = [p.strip() for p in type_str.split(" | ")]
         non_none = [p for p in parts if p.lower() not in ("none", "nonetype")]
         if len(non_none) == 1:
             return type_str_to_json_schema(non_none[0])
-        return {"anyOf": [type_str_to_json_schema(p) for p in non_none]}
+        return {"oneOf": [type_str_to_json_schema(p) for p in non_none]}
     
     # 处理 Optional[T]
     if type_str.startswith("Optional[") and type_str.endswith("]"):

@@ -1,8 +1,8 @@
 import copy
 import unittest
 
-from ida_pro_mcp import server
-from ida_pro_mcp.broker import manager as broker_manager
+from ida_pro_mcp_enhanced import server
+from ida_pro_mcp_enhanced.broker import manager as broker_manager
 
 
 class _FakeBrokerClient:

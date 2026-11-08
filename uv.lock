@@ -338,8 +338,8 @@ wheels = [
 ]
 
 [[package]]
-name = "ida-pro-mcp"
-version = "2.0.0"
+name = "ida-pro-mcp-enhanced"
+version = "2.0.8"
 source = { editable = "." }
 dependencies = [
     { name = "idapro" },

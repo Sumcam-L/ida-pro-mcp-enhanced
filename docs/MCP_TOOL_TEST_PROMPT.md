@@ -146,7 +146,20 @@
 | `read_struct` | `{"queries": {"addr": "0x403000"}}` | 读取该地址结构 |
 | `search_structs` | `{"filter": "FILE*"}` | 名称匹配的结构 |
 | `declare_type` | `{"decls": "typedef int my_t;"}` | 声明类型 |
+| `declare_type` | `{"decls": "struct __Probe { int a; int b; };"}` | 声明结构；同名已存在时**覆盖**布局 |
+| `declare_type` | `{"decls": "struct std::shared_ptr<class X> { void * p; void * q; };"}` | 含 `<>` 的类型名，走 set_named_type 写入 |
+| `type_inspect` | `{"queries": {"name": "__Probe", "include_members": true}}` | 返回 size/members；无布局时 `is_placeholder: true` |
 | `infer_types` | `{"addrs": "0x401000"}` | 类型推断 |
+
+
+> **写结构体的正确入口**
+>
+> - 定义/覆盖结构体布局 → `declare_type`
+> - `set_type` 只把**已有**类型应用到地址，不修改 UDT 布局，也没有 struct 这个 kind
+> - 名字里带 `<...>`（模板实例化）时，IDA 的 C 解析器直接报 `Illegal argument location`；
+>   `declare_type` 对这类名字改走 `set_named_type(NTF_REPLACE)`，因此该类型必须**已经存在**
+> - `type_inspect` 返回 `is_placeholder: true` 表示类型存在但没有成员
+>   （前置声明，或 PDB 导入的空壳），此时还不能当结构体读
 
 ---
 

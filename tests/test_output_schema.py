@@ -12,7 +12,7 @@ import sys
 import unittest
 from typing import Annotated, TypedDict
 
-_ZEROMCP_SRC = pathlib.Path(__file__).resolve().parents[1] / "src" / "ida_pro_mcp" / "ida_mcp"
+_ZEROMCP_SRC = pathlib.Path(__file__).resolve().parents[1] / "src" / "ida_pro_mcp_enhanced" / "ida_mcp"
 sys.path.insert(0, str(_ZEROMCP_SRC))
 try:
     from zeromcp.mcp import McpServer
@@ -43,8 +43,8 @@ class PrototypesResult(TypedDict):
 
 def _matches_schema(instance, schema: dict) -> bool:
     """Minimal JSON-Schema validator (enough for the shapes we care about)."""
-    if "anyOf" in schema:
-        return any(_matches_schema(instance, sub) for sub in schema["anyOf"])
+    if "oneOf" in schema:
+        return any(_matches_schema(instance, sub) for sub in schema["oneOf"])
 
     expected_type = schema.get("type")
     if expected_type == "object":
@@ -85,16 +85,16 @@ class SchemaIsObjectLikeTests(unittest.TestCase):
     def test_plain_object(self):
         self.assertTrue(self.srv._schema_is_object_like({"type": "object"}))
 
-    def test_anyof_all_objects(self):
-        schema = {"anyOf": [{"type": "object"}, {"type": "object"}]}
+    def test_oneof_all_objects(self):
+        schema = {"oneOf": [{"type": "object"}, {"type": "object"}]}
         self.assertTrue(self.srv._schema_is_object_like(schema))
 
-    def test_anyof_mixed(self):
-        schema = {"anyOf": [{"type": "object"}, {"type": "string"}]}
+    def test_oneof_mixed(self):
+        schema = {"oneOf": [{"type": "object"}, {"type": "string"}]}
         self.assertFalse(self.srv._schema_is_object_like(schema))
 
-    def test_anyof_no_objects(self):
-        schema = {"anyOf": [{"type": "string"}, {"type": "integer"}]}
+    def test_oneof_no_objects(self):
+        schema = {"oneOf": [{"type": "string"}, {"type": "integer"}]}
         self.assertFalse(self.srv._schema_is_object_like(schema))
 
     def test_primitive(self):
@@ -103,20 +103,20 @@ class SchemaIsObjectLikeTests(unittest.TestCase):
     def test_array(self):
         self.assertFalse(self.srv._schema_is_object_like({"type": "array"}))
 
-    def test_nested_anyof_objects(self):
+    def test_nested_oneof_objects(self):
         schema = {
-            "anyOf": [
+            "oneOf": [
                 {"type": "object"},
-                {"anyOf": [{"type": "object"}, {"type": "object"}]},
+                {"oneOf": [{"type": "object"}, {"type": "object"}]},
             ]
         }
         self.assertTrue(self.srv._schema_is_object_like(schema))
 
-    def test_nested_anyof_with_non_object(self):
+    def test_nested_oneof_with_non_object(self):
         schema = {
-            "anyOf": [
+            "oneOf": [
                 {"type": "object"},
-                {"anyOf": [{"type": "object"}, {"type": "string"}]},
+                {"oneOf": [{"type": "object"}, {"type": "string"}]},
             ]
         }
         self.assertFalse(self.srv._schema_is_object_like(schema))
@@ -144,11 +144,11 @@ class OutputSchemaUnionOfObjectsTests(unittest.TestCase):
         schema = self._register_and_get_schema(multi_format)
         out = schema["outputSchema"]
 
-        self.assertIn("anyOf", out, "union-of-objects should produce anyOf at top level")
+        self.assertIn("oneOf", out, "union-of-objects should produce oneOf at top level")
         self.assertNotIn("result", out.get("properties", {}),
                          "union-of-objects must not be wrapped in a 'result' property")
         self.assertNotIn("required", out,
-                         "top-level should have no required list (it's anyOf, not object)")
+                         "top-level should have no required list (it's oneOf, not object)")
 
     def test_single_typed_dict_not_wrapped(self):
         def single_format() -> JsonResult:

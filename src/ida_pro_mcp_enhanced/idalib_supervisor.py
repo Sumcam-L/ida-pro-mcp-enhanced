@@ -53,6 +53,16 @@ IDALIB_MANAGEMENT_TOOLS = {
 }
 IDALIB_HIDDEN_PLUGIN_TOOLS = {"list_instances", "select_instance"}
 
+# Supervisor-hosted tools that are only exposed when --unsafe is passed.
+#
+# idalib_save writes the database to disk, exactly like the worker's idb_save
+# (which is @unsafe). The supervisor cannot import ida_mcp.rpc to read
+# MCP_UNSAFE -- it must stay IDAPython-free -- so the name is listed here.
+# Without this, --unsafe would hide idb_save on the worker while leaving
+# idalib_save advertised; calling it would then fail with a confusing
+# "worker has no such tool" instead of a clear "restart with --unsafe".
+UNSAFE_SUPERVISOR_TOOLS: frozenset[str] = frozenset({"idalib_save"})
+
 
 def _import_zeromcp():
     """Import vendored zeromcp without importing ida_mcp/__init__.py."""
@@ -889,6 +899,7 @@ class IdalibSupervisor:
 
 mcp = McpServer("ida-pro-mcp")
 supervisor: IdalibSupervisor | None = None
+_UNSAFE_ENABLED = False
 _original_dispatch = mcp.registry.dispatch
 
 
@@ -1037,7 +1048,10 @@ def idalib_save(
     path: Annotated[str, "Optional destination path (default: current IDB path)"] = "",
     session_id: Annotated[Optional[str], "Optional session to save"] = None,
 ) -> IdalibSaveResult:
-    """Save the selected database worker's IDB."""
+    """Save the selected database worker's IDB.
+
+    Unsafe: writes the database to disk. Requires --unsafe.
+    """
     sup = _require_supervisor()
     try:
         context_id = sup.resolve_context_id()
@@ -1144,6 +1158,10 @@ def _handle_tools_list(request_obj: dict[str, Any]) -> dict[str, Any]:
     sup = _require_supervisor()
     local_tools = mcp._mcp_tools_list().get("tools", [])
     worker_tools = sup.worker_tools()
+    if not _UNSAFE_ENABLED:
+        hidden = UNSAFE_SUPERVISOR_TOOLS
+        local_tools = [t for t in local_tools if t.get("name") not in hidden]
+        worker_tools = [t for t in worker_tools if t.get("name") not in hidden]
     return _jsonrpc_result(request_obj.get("id"), {"tools": worker_tools + local_tools})
 
 
@@ -1153,6 +1171,19 @@ def _handle_tools_call(request_obj: dict[str, Any]) -> dict[str, Any] | None:
     tool_name = params.get("name", "")
     request_id = request_obj.get("id")
 
+    if not _UNSAFE_ENABLED and tool_name in UNSAFE_SUPERVISOR_TOOLS:
+        return _jsonrpc_result(
+            request_id,
+            _call_tool_result(
+                {
+                    "error": (
+                        f"{tool_name} is unsafe and is disabled. Restart idalib-mcp "
+                        "with --unsafe to enable it."
+                    )
+                },
+                is_error=True,
+            ),
+        )
     if tool_name in IDALIB_MANAGEMENT_TOOLS:
         return _original_dispatch(request_obj)
     if tool_name in IDALIB_HIDDEN_PLUGIN_TOOLS:
@@ -1273,6 +1304,9 @@ def main() -> None:
 
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO)
 
+    global _UNSAFE_ENABLED, supervisor
+    _UNSAFE_ENABLED = bool(args.unsafe)
+
     worker_args: list[str] = []
     if args.verbose:
         worker_args.append("--verbose")
@@ -1281,7 +1315,6 @@ def main() -> None:
     if args.profile is not None:
         worker_args.extend(["--profile", str(args.profile)])
 
-    global supervisor
     supervisor = IdalibSupervisor(
         mcp,
         isolated_contexts=args.isolated_contexts,

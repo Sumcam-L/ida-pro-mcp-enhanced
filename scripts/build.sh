@@ -22,7 +22,7 @@ find src -name "__pycache__" -type d -prune -exec rm -rf {} + 2>/dev/null || tru
 find src -name "*.pyc" -delete 2>/dev/null || true
 
 echo "== 语法自检 =="
-"$PY" -m compileall -q src/ida_pro_mcp
+"$PY" -m compileall -q src/ida_pro_mcp_enhanced
 
 echo "== 构建 wheel =="
 # --no-build-isolation: 直接用当前环境的 setuptools，避免联网拉依赖

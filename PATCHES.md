@@ -260,3 +260,79 @@ list_funcs: unrecognized parameter(s) ['filter'].
 **为什么要报错而不是自动兼容 `filter`**：工具 schema 里只有 `queries`。偷偷接受 `filter` 会让「文档说 queries、实际两种都行」长期并存，问题只是被推迟。报错并给出正确写法，一次就教会。
 
 **验证**：7 项参数校验用例（未知参数、分页简写误用、正确写法、旧别名）全部符合预期。
+
+---
+
+## 6. `ida_mcp/api_types.py` — 让模板实例化类型真正能被写入
+
+**问题**：上一版给 `declare_type` 加了模板名分支（名字含 `<...>` 时绕开 C 解析器，
+直接 `set_named_type(NTF_REPLACE)`），但成员类型仍用 `tinfo_t.parse()` 解析。
+而 **`parse()` 对任何含 `<...>` 的名字都必定返回失败**（实测 `get_named_type`
+能拿到 size=16 的同一名字，`parse` 却返回 empty）。
+
+后果有两层：
+
+1. 带模板成员的结构体永远写不进去 —— 报 `Illegal argument location class_GameEffects`；
+2. 更糟的是 `parse()` 没带 `PT_SIL`，失败时 IDA 侧可能弹模态框/阻塞消息泵，
+   把插件线程卡死。现场典型症状是 `list_funcs` 正常、`type_inspect` 全部超时，
+   只能重启 IDA。
+
+**改动**：
+
+- `_resolve_base_type()`：名字含 `<...>` 时走 `get_named_type()` 而不是 `parse()`；
+  先剥掉尾部 `*` 再 `create_ptr()` 还原，所以 `T *` 也能用于模板名
+- 普通拼写继续走 `parse()`，但补上 `PT_SIL`，**永不弹框**
+- `_decl_needs_manual_udt()` + `_build_udt_by_hand()`：C 解析器失败且成员含
+  `<...>` 时，直接 `create_udt` + `set_named_type` 手工建 UDT
+- 数组成员 `char pad[8]` 的维度从名字里剥出、改用 `create_array()` 重建
+
+**验证**：会话里卡死的 `GameEffects::Modifiers::DynamicModifier`（47 个成员、
+544 字节）一次写入成功，每个偏移对得上 ctor 反编译与 getter 反汇编。
+
+---
+
+## 7. `tool_registry.py` / `zeromcp/mcp.py` — 联合类型改用 `oneOf`
+
+**问题**：模型侧能看到的工具参数里，65 个 IDA 工具只有 1 个带真实 schema，
+其余全是 `unknown`。参数写成 `list[T] | T` 会生成 `anyOf`，而 **`anyOf` 不在
+客户端的 schema 子集里**（子集只有
+`type/oneOf/properties/required/additionalProperties/items/enum/const`），
+一个 `anyOf` 就让整个参数对象退化成 `unknown`。
+
+本仓库 53 个工具是这种形状，于是模型看不到参数名，只能猜 —— 现场表现就是
+`search_structs(filter=..., limit=...)`、`type_inspect(name=...)` 这类调用
+反复报 `unexpected parameters` / `missing required parameters`。
+
+**改动**：`anyOf` → `oneOf`（语义等价，且落在子集内）。
+
+**验证**：改造后 87 个工具全部可渲染，`unknown` 从 55 个降到 0 个。
+
+---
+
+## 8. `broker/cache_handlers.py` — 缓存工具补 `structuredContent`
+
+**问题**：同一工具两条返回路径形状不一致 —— 缓存命中只给
+`content[0].text`（JSON 字符串），原生路径给 `structuredContent`。
+调用方必须为两种情况各写一套解析。
+
+**改动**：`_wrap_ok()` 同时写 `structuredContent`。
+
+---
+
+## 9. `ida_mcp/api_types.py` — `type_inspect` 标记空壳类型
+
+**问题**：PDB 导入的空壳类（前置声明，或成员全丢）在 IDA 里表现为
+`exists: true` + `size: 1` + `member_count: 0`，和真实类型难以区分，
+调用方会去“读”一个根本不存在的布局。
+
+**改动**：新增 `is_placeholder` 字段（无成员即 true）。
+
+---
+
+## 10. `api_core.py` / `idalib_server.py` / `idalib_supervisor.py` — `idb_save` 归入 `--unsafe`
+
+**问题**：`idb_save` 会直接写盘，却和只读工具一样常驻工具列表。
+
+**改动**：`idb_save` / `idalib_save` 标 `@unsafe`。supervisor 不 import
+`ida_mcp.rpc`（必须保持 IDAPython-free），所以用本地集合
+`UNSAFE_SUPERVISOR_TOOLS` 独立把关 `tools/list` 与 `tools/call`。

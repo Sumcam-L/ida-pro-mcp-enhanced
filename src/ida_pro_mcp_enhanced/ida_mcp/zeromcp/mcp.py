@@ -1048,8 +1048,8 @@ class McpServer:
         """
         if schema.get("type") == "object":
             return True
-        if "anyOf" in schema:
-            return all(self._schema_is_object_like(s) for s in schema["anyOf"])
+        if "oneOf" in schema:
+            return all(self._schema_is_object_like(s) for s in schema["oneOf"])
         return False
 
     def _type_to_json_schema(self, py_type: Any) -> dict:
@@ -1071,8 +1071,16 @@ class McpServer:
             return self._type_to_json_schema(get_args(py_type)[0])
 
         # Union[Ts..], Optional[T] and T1 | T2
+        #
+        # oneOf, not anyOf: the harness that projects these schemas into the
+        # model's SDK only supports a JSON-Schema subset (type/oneOf/properties/
+        # required/additionalProperties/items/enum/const). anyOf is outside that
+        # subset, so a single anyOf anywhere in a tool's inputSchema makes the
+        # WHOLE parameter object render as `unknown` — the model then has to
+        # guess every argument name. oneOf carries the same information here
+        # and stays inside the supported subset.
         if origin in (Union, UnionType):
-            return {"anyOf": [self._type_to_json_schema(t) for t in get_args(py_type)]}
+            return {"oneOf": [self._type_to_json_schema(t) for t in get_args(py_type)]}
 
         # list[T]
         if origin is list:

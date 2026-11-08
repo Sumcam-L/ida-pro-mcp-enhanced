@@ -16,7 +16,7 @@
 
 ```bash
 # 1. 安装（装在 IDA 使用的那个 Python 环境里）
-pip install https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases/latest/download/ida_pro_mcp_enhanced-2.0.7-py3-none-any.whl
+pip install https://github.com/Sumcam-L/ida-pro-mcp-enhanced/releases/latest/download/ida_pro_mcp_enhanced-2.0.8-py3-none-any.whl
 
 # 2. 装 IDA 插件（loader + ida_mcp + broker 三件套）+ 打印客户端配置
 ida-mcp-setup
@@ -355,7 +355,7 @@ IDB 打开后，在 IDA 中按 Ctrl+Alt+M，连接地址填 `http://<机器IP>:1
 |------|------|
 | `--install` | 安装 IDA 插件 + 各 MCP 客户端配置 |
 | `--uninstall` | 卸载 IDA 插件 + 各 MCP 客户端配置 |
-| `--unsafe` | 启用调试器等不安全工具（`dbg_*`） |
+| `--unsafe` | 启用不安全工具：`dbg_*` 调试器、`py_eval`/`py_exec_file`、`diff_before_after`、`idb_save`（写盘） |
 | `--broker` | 启动 Broker HTTP 服务器（0.0.0.0），同时提供 MCP 协议端点和 IDA 注册端点 |
 | `--broker-url URL` | 当前 MCP 进程要连的 Broker 地址，默认 `http://127.0.0.1:13337` |
 | `--port PORT` | Broker 监听端口，默认 13337 |

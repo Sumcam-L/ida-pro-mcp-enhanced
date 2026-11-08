@@ -16,7 +16,7 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 
-_ZEROMCP_SRC = pathlib.Path(__file__).resolve().parents[1] / "src" / "ida_pro_mcp" / "ida_mcp"
+_ZEROMCP_SRC = pathlib.Path(__file__).resolve().parents[1] / "src" / "ida_pro_mcp_enhanced" / "ida_mcp"
 sys.path.insert(0, str(_ZEROMCP_SRC))
 try:
     from zeromcp.mcp import McpServer  # noqa: E402
@@ -283,7 +283,7 @@ def call_rpc(server: McpServer, method: str, **params: Any) -> Any:
 
 def load_ida_rpc_module() -> types.ModuleType:
     """Load rpc.py without triggering the ida_mcp package __init__ (needs IDA)."""
-    pkg_root = pathlib.Path(__file__).resolve().parents[1] / "src" / "ida_pro_mcp" / "ida_mcp"
+    pkg_root = pathlib.Path(__file__).resolve().parents[1] / "src" / "ida_pro_mcp_enhanced" / "ida_mcp"
 
     pkg_name = "_test_stub_ida_mcp"
     if pkg_name + ".rpc" in sys.modules:

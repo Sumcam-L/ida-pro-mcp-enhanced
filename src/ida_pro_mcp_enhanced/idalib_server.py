@@ -27,7 +27,12 @@ from ida_pro_mcp_enhanced.ida_mcp.api_core import (
     server_warmup,
 )
 from ida_pro_mcp_enhanced.ida_mcp.profile import apply_profile, load_profile
-from ida_pro_mcp_enhanced.ida_mcp.rpc import get_current_transport_session_id, set_download_base_url, tool
+from ida_pro_mcp_enhanced.ida_mcp.rpc import (
+    get_current_transport_session_id,
+    set_download_base_url,
+    tool,
+    unsafe,
+)
 from ida_pro_mcp_enhanced.ida_mcp.http import IdaMcpHttpRequestHandler
 from ida_pro_mcp_enhanced.idalib_session_manager import get_session_manager
 
@@ -404,13 +409,17 @@ def _unregister_from_coordinator():
     except Exception as e:
         logger.warning("注销时出错: %s", e)
 @tool
+@unsafe
 def idalib_save(
     path: Annotated[str, "Optional destination path (default: current IDB path)"] = "",
     session_id: Annotated[
         Optional[str], "Optional session to activate before saving"
     ] = None,
 ) -> IdalibSaveResult:
-    """Save the active (or requested) IDA session database to disk."""
+    """Save the active (or requested) IDA session database to disk.
+
+    Unsafe: writes the database to disk. Requires --unsafe.
+    """
 
     try:
         manager = get_session_manager()

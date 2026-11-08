@@ -19,7 +19,7 @@ import ida_nalt
 import ida_typeinf
 import idc
 
-from .rpc import tool
+from .rpc import tool, unsafe
 from .sync import idasync
 from .utils import (
     ConvertedNumber,
@@ -848,10 +848,15 @@ def imports_query(
 
 @tool
 @idasync
+@unsafe
 def idb_save(
     path: Annotated[str, "Optional destination path (default: current IDB path)"] = "",
 ) -> IdbSaveResult:
-    """Save active IDB to disk, optionally to a provided path."""
+    """Save active IDB to disk, optionally to a provided path.
+
+    Unsafe: writes the current database to disk (and unpacking/packing moves the
+    IDB). Requires the server to be started with --unsafe.
+    """
     try:
         save_path = path.strip() if path else ""
         if not save_path:
@@ -1250,29 +1255,15 @@ def search_text(
 ) -> SearchTextResult:
     """Search the rendered listing for text or a regex.
 
-    PATTERN SEMANTICS - read this before concluding a symbol is absent:
+    regex=False (default) is a literal substring search: "Foo|Bar" matches those
+    eight characters in order, NOT "Foo OR Bar", so 0 hits proves nothing about
+    whether Foo or Bar exist. regex=True enables Python re syntax for OR, groups,
+    classes and anchors.
 
-      regex=False (default)  literal substring. "Foo|Bar" looks for the eight
-                             characters F,o,o,|,B,a,r in that order - it does
-                             NOT mean "Foo OR Bar". A hit count of 0 here says
-                             nothing about whether Foo or Bar exist.
-      regex=True             Python re syntax. Use it for OR, groups, classes
-                             and anchors:    "TerrainElement|AssetCooker"
-
-    A zero result whose pattern contains | ( ) [ ] \ ^ $ or .* is almost always
-    a forgotten regex=true, not a missing symbol. When that happens this tool
-    returns a "note" field saying so - retry with regex=true before drawing any
-    conclusion. For OR searches, regex=true is cheaper than several literal
-    scans anyway.
-
-    Renders the listing block by block (function by function for code) and
-    matches in memory instead of using ida_search.find_text(), which is orders
-    of magnitude slower and can lock the IDA main thread for minutes.
-
-    The call always returns within time_budget_sec. If the scan did not finish,
-    cursor carries {"next": "<addr>", "partial": True}; pass that address back
-    as start to continue. cursor.done means the address space was exhausted.
-    Hits are ordered by address and never repeat across pages.
+    A zero-hit pattern containing | ( ) [ ] \ ^ $ or .* is usually a forgotten
+    regex=true, not a missing symbol; the response says so in a "note" field.
+    Scans the listing in memory, always returns within time_budget_sec, and an
+    unfinished scan reports cursor {"next": "<addr>", "partial": True} to resume.
     """
     if limit <= 0:
         limit = 30

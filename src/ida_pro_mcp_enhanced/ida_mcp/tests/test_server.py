@@ -190,6 +190,7 @@ def test_unsafe_tools_registered():
     assert len(MCP_UNSAFE) > 0, "MCP_UNSAFE is empty — no tools marked @unsafe"
     assert "py_eval" in MCP_UNSAFE, "py_eval should be marked @unsafe"
     assert "py_exec_file" in MCP_UNSAFE, "py_exec_file should be marked @unsafe"
+    assert "idb_save" in MCP_UNSAFE, "idb_save should be marked @unsafe (writes the IDB)"
 
 
 @test()

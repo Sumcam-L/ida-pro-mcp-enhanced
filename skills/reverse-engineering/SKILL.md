@@ -113,6 +113,9 @@ find_regex - 搜索可疑字符串（URL、IP、命令）
 
 ## 安全工具（需要 --unsafe 启动）
 
+写盘类工具同样属于 unsafe：`idb_save`（以及 idalib 下的 `idalib_save`）
+会直接把数据库保存到磁盘，未加 `--unsafe` 时不会出现在工具列表里。
+
 如果需要动态调试：
 - `dbg_start` - 启动调试器
 - `dbg_step_into` - 单步步入

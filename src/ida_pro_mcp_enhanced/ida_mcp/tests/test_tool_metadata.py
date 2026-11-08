@@ -106,6 +106,13 @@ _PRIMITIVE_TYPE_NAMES = {"str", "int", "float", "bool", "bytes", "dict"}
 # Parameter names whose annotations are allowed to include a bare `str` because
 # the string carries no ambiguity - they're simple scalar inputs, not TypedDict
 # shortcuts. Example: `addr: str`, `addrs: list[str] | str`.
+#
+# `queries` / `regions` / `inputs` belong here for the same reason: their
+# string branch is a documented wire shorthand ("0:50", "0x401000:16",
+# "0x41") that the tool really parses, and the parameter description spells the
+# accepted form out. The schema keeps the typed branch as well - the emitted
+# JSON Schema still carries the full TypedDict shape for the object/array
+# forms, so the shorthand does not erase anything the model needs.
 _PLAIN_STRING_PARAMS = {
     "addr",
     "addrs",
@@ -118,6 +125,9 @@ _PLAIN_STRING_PARAMS = {
     "path",
     "type",
     "format",
+    "queries",
+    "regions",
+    "inputs",
 }
 
 

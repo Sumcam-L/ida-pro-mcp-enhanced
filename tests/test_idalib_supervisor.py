@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-from ida_pro_mcp import idalib_supervisor as supmod
+from ida_pro_mcp_enhanced import idalib_supervisor as supmod
 
 
 class _FakeProcess:

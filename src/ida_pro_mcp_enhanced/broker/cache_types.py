@@ -210,8 +210,9 @@ class McpTextContent(TypedDict):
     text: str
 
 
-class McpToolCallResult(TypedDict):
+class McpToolCallResult(TypedDict, total=False):
     content: list[McpTextContent]
+    structuredContent: dict[str, Any]
     isError: bool
 
 

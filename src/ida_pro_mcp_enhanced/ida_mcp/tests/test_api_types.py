@@ -605,3 +605,126 @@ def test_infer_types_invalid_text_address_errors_cleanly():
     result = infer_types("InvalidAddressName123")
     assert_is_list(result, min_length=1)
     assert_error(result[0], contains="Not found")
+
+
+TEMPLATE_TYPE_NAME = "std::shared_ptr<class __TestGameEffects::ITestObject>"
+TEMPLATE_PROBE_TYPE = "std::__ProbePair<class __TestA>"
+
+
+@test()
+def test_declare_type_overwrites_existing_struct():
+    """declare_type replaces an existing UDT instead of silently keeping the old layout.
+
+    Filling in a type the PDB left as an empty shell depends on this: the name
+    already exists, so a create-only implementation would appear to succeed
+    while changing nothing.
+    """
+    first = declare_type(["struct __OverwriteProbe__ { int a; };"])
+    assert_is_list(first, min_length=1)
+    assert "error" not in first[0], first[0].get("error")
+
+    second = declare_type(["struct __OverwriteProbe__ { int a; int b; int c; };"])
+    assert_is_list(second, min_length=1)
+    assert "error" not in second[0], second[0].get("error")
+
+    info = type_inspect([{"name": "__OverwriteProbe__", "include_members": True}])[0]
+    assert info["exists"]
+    assert info["size"] == 12
+    assert info["member_count"] == 3
+
+
+@test()
+def test_declare_type_accepts_template_instance_name():
+    """declare_type can define a type whose name contains '<...>'.
+
+    IDA's C parser rejects these names outright ("Illegal argument location"),
+    which used to make every PDB-imported template instantiation impossible to
+    fill in. They are written through set_named_type instead.
+    """
+    result = declare_type(
+        [f"struct {TEMPLATE_TYPE_NAME} {{ void * _Ptr; void * _Rep; }};"]
+    )
+    assert_is_list(result, min_length=1)
+    assert "error" not in result[0], result[0].get("error")
+    assert result[0]["type_name"] == TEMPLATE_TYPE_NAME
+
+    info = type_inspect(
+        [{"name": TEMPLATE_TYPE_NAME, "include_members": True}]
+    )[0]
+    assert info["exists"]
+    assert info["size"] == 16
+    assert info["member_count"] == 2
+    assert [m["name"] for m in info["members"]] == ["_Ptr", "_Rep"]
+
+
+@test()
+def test_declare_type_template_instance_reports_member_error():
+    """A malformed member inside a '<>' name reports which member failed."""
+    result = declare_type([f"struct {TEMPLATE_PROBE_TYPE} {{ int; }};"])
+    assert_is_list(result, min_length=1)
+    assert_error(result[0], contains="expected '<type> <name>'")
+
+
+@test()
+def test_type_inspect_flags_placeholder_types():
+    """type_inspect marks a type with no layout as a placeholder.
+
+    A forward declaration and an empty shell both look like ordinary existing
+    types otherwise, so callers waste turns reading a layout that is not there.
+    """
+    declare_type(["struct __PlaceholderProbe__;"])
+    info = type_inspect([{"name": "__PlaceholderProbe__"}])[0]
+    assert info["exists"]
+    assert info["is_placeholder"] is True
+
+    declare_type(["struct __ConcreteProbe__ { int a; };"])
+    concrete = type_inspect([{"name": "__ConcreteProbe__"}])[0]
+    assert concrete["exists"]
+    assert concrete["is_placeholder"] is False
+
+TEMPLATE_MEMBER = "std::shared_ptr<class __TestGameEffects::ITestObject>"
+
+
+@test()
+def test_declare_type_member_uses_template_instance_name():
+    """A member typed with a "<...>" name is written instead of rejected.
+
+    IDA's C parser refuses angle brackets anywhere in a type name, so an
+    aggregate whose members reference a template instantiation can never be
+    parsed -- it used to fail (and, on a GUI IDB, wedge the plugin). Such
+    aggregates are now built directly as a UDT.
+    """
+    shell = declare_type([f"struct {TEMPLATE_MEMBER} {{ void * _Ptr; void * _Rep; }};"])
+    assert "error" not in shell[0], shell[0].get("error")
+
+    holder = declare_type([f"struct __TplHolder__ {{ char pad[8]; {TEMPLATE_MEMBER} sp; int tail; }};"])
+    assert "error" not in holder[0], holder[0].get("error")
+    assert holder[0]["size"] == 32
+
+    info = type_inspect([{"name": "__TplHolder__", "include_members": True}])[0]
+    offsets = {m["name"]: m["offset"] for m in info["members"]}
+    assert offsets == {"pad": "0x0", "sp": "0x8", "tail": "0x18"}, offsets
+
+
+@test()
+def test_declare_type_member_pointer_to_template_instance():
+    """A pointer to a "<...>" named type resolves to 8 bytes, not a failure."""
+    declare_type([f"struct {TEMPLATE_MEMBER} {{ void * _Ptr; void * _Rep; }};"])
+    result = declare_type([f"struct __TplPtrHolder__ {{ {TEMPLATE_MEMBER} * psp; }};"])
+    assert "error" not in result[0], result[0].get("error")
+    assert result[0]["size"] == 8
+
+
+@test()
+def test_declare_type_array_member_is_sized():
+    """A char[N] member is honoured as N bytes in the hand-built path."""
+    declare_type([f"struct {TEMPLATE_MEMBER} {{ void * _Ptr; void * _Rep; }};"])
+    result = declare_type(
+        [f"struct __ArrHolder__ {{ char gap[5]; {TEMPLATE_MEMBER} sp; }};"]
+    )
+    assert "error" not in result[0], result[0].get("error")
+    assert result[0]["size"] == 24
+
+    info = type_inspect([{"name": "__ArrHolder__", "include_members": True}])[0]
+    gap = next(m for m in info["members"] if m["name"] == "gap")
+    assert gap["size"] == 5

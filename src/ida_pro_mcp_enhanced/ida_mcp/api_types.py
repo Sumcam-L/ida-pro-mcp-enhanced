@@ -1,4 +1,5 @@
 import fnmatch
+import re
 from typing import Annotated, Any, TypedDict
 
 import idc
@@ -36,6 +37,8 @@ from .compat import tinfo_get_udm
 
 class DeclareTypeResult(TypedDict, total=False):
     decl: str
+    type_name: str
+    size: int
     error: str
 
 
@@ -125,6 +128,7 @@ class TypeInspectResult(TypedDict, total=False):
     is_udt: bool
     members: list[TypeCatalogMemberResult] | None
     member_count: int
+    is_placeholder: bool
     error: str
 
 
@@ -156,24 +160,355 @@ class InferTypeResult(TypedDict, total=False):
 # ============================================================================
 
 
+# IDA's C parser refuses "<...>" in a type name: "Illegal argument location X".
+# That blocks every PDB-imported template instantiation name -- the exact shape
+# the IDB uses for std::shared_ptr<class_GameEffects::IModifierObject> and
+# friends. Such names can still be written through the type library API, so
+# declare_type routes them there instead of reporting a parse error the caller
+# can do nothing about.
+_TEMPLATE_NAME_RE = re.compile(r"^\s*(struct|class|union)\s+(.+?<.*>)\s*\{", re.S)
+
+# "... <...> ;" -- a template-named forward declaration. IDA cannot represent
+# it at all (the parser rejects the name), so say so instead of surfacing
+# "Syntax error near: class", which reads like a bug in the caller's input.
+_TEMPLATE_FWDDECL_RE = re.compile(r"^\s*(?:struct|class|union)\s+\S*<.*>\s*;\s*$", re.S)
+
+
+def _split_top_level_members(body: str) -> list[str]:
+    """Split an aggregate body on ';' at brace/paren/bracket depth 0."""
+    members: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for ch in body:
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        if ch == ";" and depth == 0:
+            members.append("".join(current).strip())
+            current = []
+            continue
+        current.append(ch)
+    tail = "".join(current).strip()
+    if tail:
+        members.append(tail)
+    return [m for m in members if m]
+
+
+def _resolve_member_type(type_text: str) -> ida_typeinf.tinfo_t | None:
+    """Resolve one member type spelling to a tinfo_t, or None.
+
+    Three spellings must work, because they appear in real declarations:
+
+      "void *"                        primitive + pointer
+      "FAutoArchive"                  named type
+      "std::shared_ptr<...>"          template instance name
+
+    tinfo_t.parse() handles the first two. It cannot handle a template
+    instance name at all -- not as a value, not with a trailing star -- so
+    those are looked up in the local type library by name. Array suffixes
+    (char pad[8]) are peeled off and rebuilt with create_array().
+    """
+    text = type_text.strip().rstrip(';').strip()
+    if not text:
+        return None
+
+    # Peel trailing [N] dimensions before resolving the base type.
+    dims: list[int] = []
+    while text.endswith(']'):
+        open_bracket = text.rfind('[')
+        if open_bracket < 0:
+            break
+        try:
+            dims.append(int(text[open_bracket + 1 : -1].strip(), 0))
+        except ValueError:
+            return None
+        text = text[:open_bracket].rstrip()
+    dims.reverse()
+
+    base = _resolve_base_type(text)
+    if base is None:
+        return None
+
+    for dim in dims:
+        if dim <= 0:
+            return None
+        arrayed = ida_typeinf.tinfo_t()
+        if not arrayed.create_array(base, dim):
+            return None
+        base = arrayed
+
+    return None if base.empty() else base
+
+
+def _resolve_base_type(text: str) -> ida_typeinf.tinfo_t | None:
+    """Resolve a pointer/primitive/named type, without array dimensions."""
+    if not text:
+        return None
+
+    # Fast path: ordinary spellings (void *, int, FAutoArchive, ...).
+    if '<' not in text:
+        parsed = ida_typeinf.tinfo_t()
+        try:
+            if parsed.parse(text, None, ida_typeinf.PT_SIL) and not parsed.empty():
+                return parsed
+        except Exception:
+            pass
+        return None
+
+    # A template instance name: peel trailing pointer levels, look up the name.
+    stars = 0
+    probe = text
+    while probe.endswith('*'):
+        probe = probe[:-1].rstrip()
+        stars += 1
+
+    resolved = ida_typeinf.tinfo_t()
+    if not resolved.get_named_type(None, probe) or resolved.empty():
+        return None
+
+    for _ in range(stars):
+        pointed = ida_typeinf.tinfo_t()
+        if not pointed.create_ptr(resolved):
+            return None
+        resolved = pointed
+
+    return resolved
+
+
+def _decl_needs_manual_udt(decl: str) -> bool:
+    """True when IDA C parser cannot parse this declaration.
+
+    The parser rejects any type name containing angle brackets, so an
+    aggregate whose members reference a template instantiation must be
+    built by hand. The aggregate own name is irrelevant; only member
+    spellings matter.
+    """
+    body_start = decl.find('{')
+    body_end = decl.rfind('}')
+    if body_start < 0 or body_end <= body_start:
+        return False
+    return '<' in decl[body_start:body_end]
+
+
+def _next_offset(udt: ida_typeinf.udt_type_data_t) -> int:
+    """Byte offset just past the last member of udt."""
+    if len(udt) == 0:
+        return 0
+    last = udt[len(udt) - 1]
+    return (last.offset + last.size) // 8
+
+
+def _build_udt_by_hand(decl: str, head: str, type_name: str, body: str) -> dict:
+    """Build a UDT from a declaration the C parser cannot handle."""
+    udt = ida_typeinf.udt_type_data_t()
+    for raw_member in _split_top_level_members(body[1:-1]):
+        parts = raw_member.rsplit(None, 1)
+        if len(parts) != 2:
+            return {
+                "decl": decl,
+                "error": f"Cannot parse member {raw_member!r}: expected type and name",
+            }
+        type_text, field_name = parts[0].strip(), parts[1].strip()
+        # "char pad[8]" -> the dimension belongs to the type, not the name.
+        if field_name.endswith(']'):
+            bracket = field_name.find('[')
+            if bracket < 0:
+                return {
+                    "decl": decl,
+                    "error": f"Cannot parse array member {raw_member!r}",
+                }
+            type_text = f"{type_text}{field_name[bracket:]}"
+            field_name = field_name[:bracket].strip()
+        member_tif = _resolve_member_type(type_text)
+        if member_tif is None:
+            return {
+                "decl": decl,
+                "error": (
+                    f"Cannot resolve member type {type_text!r} of {raw_member!r}. "
+                    "A template instance name must already exist in the local "
+                    "type library before it can be used as a member type."
+                ),
+            }
+        member_size = member_tif.get_size()
+        if member_size <= 0:
+            return {
+                "decl": decl,
+                "error": f"Member {field_name!r} has unknown size ({type_text!r})",
+            }
+        udm = ida_typeinf.udm_t()
+        udm.name = field_name
+        udm.type = member_tif
+        # Explicit bit offsets: the aggregate is laid out exactly as written,
+        # with no implicit padding. Use a char array member to express a gap.
+        udm.offset = _next_offset(udt) * 8
+        udm.size = member_size * 8
+        udt.push_back(udm)
+
+    btf = ida_typeinf.BTF_UNION if head == 'union' else ida_typeinf.BTF_STRUCT
+    tif = ida_typeinf.tinfo_t()
+    if not tif.create_udt(udt, btf):
+        return {"decl": decl, "error": f"create_udt failed for {type_name}"}
+
+    flags = ida_typeinf.NTF_REPLACE | ida_typeinf.NTF_TYPE
+    code = tif.set_named_type(ida_typeinf.get_idati(), type_name, flags)
+    if code != ida_typeinf.TERR_OK:
+        return {
+            "decl": decl,
+            "error": f"set_named_type({type_name!r}) failed with code {code}",
+        }
+    return {"decl": decl, "type_name": type_name, "size": tif.get_size()}
+
+
+def _declare_template_instance(decl: str) -> dict | None:
+    """Write a "<>"-named aggregate via set_named_type instead of the parser.
+
+    Returns None when the declaration is not a template-named aggregate, so the
+    caller falls back to the normal parser path.
+    """
+    match = _TEMPLATE_NAME_RE.match(decl)
+    if not match:
+        if _TEMPLATE_FWDDECL_RE.match(decl):
+            return {
+                "decl": decl,
+                "error": (
+                    "IDA cannot represent a forward declaration whose name "
+                    "contains '<...>'. Declare it with a body instead, e.g. "
+                    "'struct Name<...> { };' to create an empty shell."
+                ),
+            }
+        return None
+
+    head, type_name = match.group(1), match.group(2).strip()
+    body = decl[match.end() - 1 :]
+    if not body.endswith("}") and "}" in body:
+        body = body[: body.rfind("}") + 1]
+    body = body.strip()
+    if not (body.startswith("{") and body.endswith("}")):
+        return None
+
+    udt = ida_typeinf.udt_type_data_t()
+    offset = 0
+    for raw_member in _split_top_level_members(body[1:-1]):
+        # "<type> <name>" -- name is the trailing identifier.
+        parts = raw_member.rsplit(None, 1)
+        if len(parts) != 2:
+            return {
+                "decl": decl,
+                "error": f"Cannot parse member {raw_member!r}: expected '<type> <name>'",
+            }
+        type_text, field_name = parts[0].strip(), parts[1].strip()
+        if field_name.endswith("]"):
+            return {
+                "decl": decl,
+                "error": (
+                    f"Cannot declare array member {raw_member!r} through this path; "
+                    "declare the type without the array member instead."
+                ),
+            }
+        member_tif = _resolve_member_type(type_text)
+        if member_tif is None:
+            return {
+                "decl": decl,
+                "error": f"Cannot resolve member type {type_text!r} of {raw_member!r}",
+            }
+        member_size = member_tif.get_size()
+        if member_size <= 0:
+            return {
+                "decl": decl,
+                "error": f"Member {field_name!r} has unknown size ({type_text!r})",
+            }
+        udm = ida_typeinf.udm_t()
+        udm.name = field_name
+        udm.type = member_tif
+        udm.offset = offset * 8
+        udm.size = member_size * 8
+        udt.push_back(udm)
+        offset += member_size
+
+    btf = ida_typeinf.BTF_UNION if head == "union" else ida_typeinf.BTF_STRUCT
+    tif = ida_typeinf.tinfo_t()
+    if not tif.create_udt(udt, btf):
+        return {"decl": decl, "error": f"create_udt failed for {type_name}"}
+
+    flags = ida_typeinf.NTF_REPLACE | ida_typeinf.NTF_TYPE
+    code = tif.set_named_type(ida_typeinf.get_idati(), type_name, flags)
+    if code != ida_typeinf.TERR_OK:
+        return {
+            "decl": decl,
+            "error": (
+                f"set_named_type({type_name!r}) failed with code {code}. "
+                "NTF_REPLACE requires the type to already exist in the local "
+                "type library; a brand-new '<>' name cannot be created this way."
+            ),
+        }
+    return {"decl": decl, "type_name": type_name, "size": tif.get_size()}
+
+
+def _declare_manual_udt(decl: str) -> dict | None:
+    """Build an aggregate whose members the C parser cannot spell.
+
+    Returns None when the declaration does not look like a plain aggregate,
+    so the caller keeps the parser error.
+    """
+    brace = decl.find('{')
+    if brace < 0:
+        return None
+    header = decl[:brace].strip()
+    body_end = decl.rfind('}')
+    if body_end <= brace:
+        return None
+    body = decl[brace : body_end + 1]
+
+    head_parts = header.split()
+    if len(head_parts) < 2 or head_parts[0] not in ('struct', 'class', 'union'):
+        return None
+    head = 'union' if head_parts[0] == 'union' else 'struct'
+    type_name = ' '.join(head_parts[1:]).strip()
+    if not type_name:
+        return None
+    return _build_udt_by_hand(decl, head, type_name, body)
+
 @tool
 @idasync
 def declare_type(
     decls: Annotated[list[str] | str, "C type declarations"],
 ) -> list[DeclareTypeResult]:
-    """Declare C type definitions in local type library."""
+    """Declare C type definitions in local type library.
+
+    Overwrites an existing same-named UDT, so it can be used to fill in a type
+    the PDB left as an empty shell. Names containing "<...>" (template
+    instantiations) cannot go through IDA's C parser; they are written via
+    set_named_type instead, and must therefore already exist.
+    """
     decls = normalize_list_input(decls)
     results = []
 
     for decl in decls:
         try:
+            template_result = _declare_template_instance(decl)
+            if template_result is not None:
+                results.append(template_result)
+                continue
+
             flags = ida_typeinf.PT_SIL | ida_typeinf.PT_EMPTY | ida_typeinf.PT_TYP
             errors, messages = parse_decls_ctypes(decl, flags)
 
-            pretty_messages = "\n".join(messages)
+            # The C parser rejects every type name containing angle brackets,
+            # so an aggregate whose *members* reference a template instance
+            # can never be parsed even though the aggregate name is ordinary.
+            # Detect that case up front and build the UDT directly instead of
+            # reporting a parse error the caller cannot act on.
+            if errors > 0 and _decl_needs_manual_udt(decl):
+                manual = _declare_manual_udt(decl)
+                if manual is not None:
+                    results.append(manual)
+                    continue
+
+            pretty_messages = chr(10).join(messages)
             if errors > 0:
                 results.append(
-                    {"decl": decl, "error": f"Failed to parse:\n{pretty_messages}"}
+                    {"decl": decl, "error": f"Failed to parse:{chr(10)}{pretty_messages}"}
                 )
             else:
                 results.append({"decl": decl})
@@ -725,7 +1060,12 @@ def type_inspect(
         "Inspect named types and optionally include member layout",
     ],
 ) -> list[TypeInspectResult]:
-    """Inspect named types (size/kind/declaration/members)."""
+    """Inspect named types (size/kind/declaration/members).
+
+    Reports is_placeholder=true when the type exists but carries no layout
+    (a forward declaration, or a class the PDB imported empty). Such a type
+    cannot be read as a struct yet -- declare_type it first.
+    """
     queries = normalize_dict_list(queries)
     results = []
 
@@ -767,7 +1107,24 @@ def type_inspect(
                 "is_udt": tif.is_udt(),
                 "members": None,
                 "member_count": 0,
+                "is_placeholder": False,
             }
+
+            # A PDB import commonly leaves a class as a forward declaration or an
+            # empty shell: IDA reports it as an existing UDT with zero members
+            # (size 1 for a PDB-imported empty class, 0xFFFF... for a plain
+            # `struct X;`). Without an explicit flag that looks like a real type
+            # and callers waste turns "reading" a layout that was never there.
+            if tif.is_udt():
+                probe = ida_typeinf.udt_type_data_t()
+                # get_udt_details() also fails for a bare forward declaration,
+                # so "no details OR no members" both mean there is no layout.
+                if not tif.get_udt_details(probe) or len(probe) == 0:
+                    info["is_placeholder"] = True
+            elif tif.get_size() in (0, 1, -1, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFF):
+                # A bare `struct X;` is not even a UDT here: IDA keeps it as a
+                # reference whose size is BADADDR. Same conclusion -- no layout.
+                info["is_placeholder"] = True
 
             if include_members and tif.is_udt():
                 udt = ida_typeinf.udt_type_data_t()
@@ -1021,7 +1378,12 @@ def _apply_type_edit(edit: dict[str, Any]) -> SetTypeResult:
 @tool
 @idasync
 def set_type(edits: list[TypeEdit] | TypeEdit) -> list[SetTypeResult]:
-    """Apply types (function/global/local/stack)"""
+    """Apply types (function/global/local/stack).
+
+    `kind` selects the target: function | global | local | stack. This tool
+    applies an existing type to an address -- it does NOT define or edit the
+    layout of a struct/UDT. To fill in a struct, use declare_type.
+    """
     normalized_edits = normalize_dict_list(edits, _parse_addr_type_shorthand)
     return [_apply_type_edit(edit) for edit in normalized_edits]
 
