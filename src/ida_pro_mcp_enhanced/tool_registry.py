@@ -179,6 +179,8 @@ class ToolDef:
     params: list[ToolParam] = field(default_factory=list)
     return_type: str = "Any"
     is_unsafe: bool = False
+    # "debugger" / "python" / "write"；空串表示没有 @unsafe 装饰器。
+    unsafe_group: str = ""
     source_file: str = ""
 
 
@@ -205,12 +207,16 @@ class ToolParser(ast.NodeVisitor):
         """访问函数定义"""
         decorators = self._get_decorators(node)
         
-        # 检查是否有 @unsafe 装饰器
+        # 检查是否有 @unsafe 装饰器（裸用或带类别）
         is_unsafe = "unsafe" in decorators
+        # @unsafe            -> True（默认 write 类）
+        # @unsafe("python")  -> "python"
+        raw_group = decorators.get("unsafe")
+        unsafe_group = raw_group if isinstance(raw_group, str) else ("write" if is_unsafe else "")
         
         # 检查 @tool 装饰器
         if "tool" in decorators:
-            tool_def = self._parse_tool(node, is_unsafe)
+            tool_def = self._parse_tool(node, is_unsafe, unsafe_group)
             if tool_def:
                 self.tools.append(tool_def)
         
@@ -239,7 +245,12 @@ class ToolParser(ast.NodeVisitor):
                         decorators[dec.func.id] = True
         return decorators
     
-    def _parse_tool(self, node: ast.FunctionDef, is_unsafe: bool) -> Optional[ToolDef]:
+    def _parse_tool(
+        self,
+        node: ast.FunctionDef,
+        is_unsafe: bool,
+        unsafe_group: str = "",
+    ) -> Optional[ToolDef]:
         """解析工具函数"""
         name = node.name
         description = ast.get_docstring(node) or f"Call {name}"
@@ -252,6 +263,7 @@ class ToolParser(ast.NodeVisitor):
             params=params,
             return_type=return_type,
             is_unsafe=is_unsafe,
+            unsafe_group=unsafe_group,
             source_file=self.source_file,
         )
     

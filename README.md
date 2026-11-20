@@ -371,7 +371,7 @@ IDB 打开后，在 IDA 中按 Ctrl+Alt+M，连接地址填 `http://<机器IP>:1
 |------|------|
 | `--install` | 安装 IDA 插件 + 各 MCP 客户端配置 |
 | `--uninstall` | 卸载 IDA 插件 + 各 MCP 客户端配置 |
-| `--unsafe` | 启用不安全工具：`dbg_*` 调试器、`py_eval`/`py_exec_file`、`diff_before_after`、`idb_save`（写盘） |
+| `--unsafe [类别...]` | 启用不安全工具。不带值 = 全部；也可只点名类别：`debugger`（22 个 `dbg_*`）、`python`（`py_eval`/`py_exec_file`）、`write`（`idb_save`/`diff_before_after`）。例：`--unsafe python` |
 | `--broker` | 启动 Broker HTTP 服务器（0.0.0.0），同时提供 MCP 协议端点和 IDA 注册端点 |
 | `--broker-url URL` | 当前 MCP 进程要连的 Broker 地址，默认 `http://127.0.0.1:13337` |
 | `--port PORT` | Broker 监听端口，默认 13337 |
@@ -448,7 +448,18 @@ IDA_MCP_BROKER_URL=http://127.0.0.1:13337 ida-pro-mcp
 - `read_struct(queries)` / `search_structs(filter)`
 
 ### 高级分析
-- `py_eval(code)` 在 IDA 上下文执行任意 Python
+- `py_eval(code)` 在 IDA 上下文执行任意 Python（表达式或语句，返回 result/stdout/stderr）
+- `py_exec_file(file_path)` 在 IDA 上下文执行**整个 .py 脚本文件**，共享一个 globals，适合长脚本
+
+这两个工具属于 `--unsafe python` 类别。只想要脚本执行、不要调试器时：
+
+```bash
+ida-pro-mcp --unsafe python        # 只开 py_eval / py_exec_file
+ida-pro-mcp --unsafe              # 全开（含 22 个 dbg_*）
+```
+
+MCP 客户端（DSH / opencode / Claude Desktop）只能传环境变量，用 `IDA_MCP_UNSAFE=python`
+（逗号分隔多个类别，`all` 表示全开）。
 - `analyze_function(addr, ...)` 单函数深入分析（反编译 + 汇编 + xrefs + 调用关系 + 基本块 + 常量 + 字符串）
 - `analyze_batch(queries)` 批量版 `analyze_function`
 - `analyze_component(...)` 以入口为根的组件级分析（调用树 + 数据流摘要）

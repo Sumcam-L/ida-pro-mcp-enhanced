@@ -366,7 +366,7 @@ def _arm_dbg_start_batch_hook(restore_batch: int) -> None:
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 @keep_batch
@@ -451,7 +451,7 @@ def dbg_start() -> DebugControlResult:
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_status() -> DebugControlResult:
@@ -460,7 +460,7 @@ def dbg_status() -> DebugControlResult:
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_exit() -> DebugControlResult:
@@ -472,7 +472,7 @@ def dbg_exit() -> DebugControlResult:
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_continue() -> DebugControlResult:
@@ -486,7 +486,7 @@ def dbg_continue() -> DebugControlResult:
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_run_to(
@@ -503,7 +503,7 @@ def dbg_run_to(
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_step_into() -> DebugControlResult:
@@ -517,7 +517,7 @@ def dbg_step_into() -> DebugControlResult:
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_step_over() -> DebugControlResult:
@@ -536,7 +536,7 @@ def dbg_step_over() -> DebugControlResult:
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_bps() -> list[Breakpoint]:
@@ -545,7 +545,7 @@ def dbg_bps() -> list[Breakpoint]:
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_add_bp(
@@ -575,7 +575,7 @@ def dbg_add_bp(
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_delete_bp(
@@ -599,7 +599,7 @@ def dbg_delete_bp(
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_toggle_bp(
@@ -632,7 +632,7 @@ def dbg_toggle_bp(
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_set_bp_condition(
@@ -735,7 +735,7 @@ def dbg_set_bp_condition(
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_regs_all() -> list[ThreadRegisters]:
@@ -749,7 +749,7 @@ def dbg_regs_all() -> list[ThreadRegisters]:
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_regs_remote(
@@ -779,7 +779,7 @@ def dbg_regs_remote(
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_regs() -> ThreadRegisters:
@@ -790,7 +790,7 @@ def dbg_regs() -> ThreadRegisters:
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_gpregs_remote(
@@ -820,7 +820,7 @@ def dbg_gpregs_remote(
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_gpregs() -> ThreadRegisters:
@@ -831,7 +831,7 @@ def dbg_gpregs() -> ThreadRegisters:
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_regs_named_remote(
@@ -851,7 +851,7 @@ def dbg_regs_named_remote(
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_regs_named(
@@ -872,7 +872,7 @@ def dbg_regs_named(
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_stacktrace() -> list[StackFrameInfo]:
@@ -924,7 +924,7 @@ def dbg_stacktrace() -> list[StackFrameInfo]:
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_read(
@@ -970,7 +970,7 @@ def dbg_read(
 
 
 @ext("dbg")
-@unsafe
+@unsafe("debugger")
 @tool
 @idasync
 def dbg_write(

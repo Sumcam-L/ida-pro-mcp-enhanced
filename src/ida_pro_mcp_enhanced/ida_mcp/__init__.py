@@ -42,7 +42,17 @@ from . import api_sigmaker
 
 # Re-export key components for external use
 from .sync import idasync, IDAError, IDASyncError, CancelledError
-from .rpc import MCP_SERVER, MCP_UNSAFE, tool, unsafe, resource
+from .rpc import (
+    MCP_SERVER,
+    MCP_UNSAFE,
+    MCP_UNSAFE_GROUPS,
+    UNSAFE_GROUP_DEBUGGER,
+    UNSAFE_GROUP_PYTHON,
+    UNSAFE_GROUP_WRITE,
+    tool,
+    unsafe,
+    resource,
+)
 from .api_core import init_caches
 from .api_instances import (
     connect_to_server,
@@ -82,6 +92,10 @@ __all__ = [
     "CancelledError",
     "MCP_SERVER",
     "MCP_UNSAFE",
+    "MCP_UNSAFE_GROUPS",
+    "UNSAFE_GROUP_DEBUGGER",
+    "UNSAFE_GROUP_PYTHON",
+    "UNSAFE_GROUP_WRITE",
     "tool",
     "unsafe",
     "resource",

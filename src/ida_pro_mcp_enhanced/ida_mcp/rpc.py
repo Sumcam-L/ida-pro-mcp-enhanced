@@ -9,7 +9,13 @@ from .zeromcp import (
     get_current_request_external_base_url,
 )
 
+# 名字 -> 危险类别（"debugger" / "python" / "write" / ...）。
+# 按类别开放，才能在只想要 python 执行时不必连 22 个调试器工具一起打开。
 MCP_UNSAFE: set[str] = set()
+MCP_UNSAFE_GROUPS: dict[str, str] = {}
+UNSAFE_GROUP_DEBUGGER = "debugger"
+UNSAFE_GROUP_PYTHON = "python"
+UNSAFE_GROUP_WRITE = "write"
 MCP_EXTENSIONS: dict[str, set[str]] = {}  # group -> set of function names
 MCP_SERVER = McpServer("ida-pro-mcp", extensions=MCP_EXTENSIONS)
 
@@ -264,9 +270,27 @@ def resource(uri):
     return MCP_SERVER.resource(uri)
 
 
-def unsafe(func):
-    MCP_UNSAFE.add(func.__name__)
-    return func
+def unsafe(group: str = UNSAFE_GROUP_WRITE):
+    """标记为不安全工具，并记录它属于哪一类危险操作。
+
+    既能当 `@unsafe`（裸装饰器）用，也能当 `@unsafe("python")` 用：
+    后者让服务端可以只开放这一类，而不是把所有 unsafe 工具一起放出来。
+    """
+
+    def register(func, *, unsafe_group: str):
+        MCP_UNSAFE.add(func.__name__)
+        MCP_UNSAFE_GROUPS[func.__name__] = unsafe_group
+        return func
+
+    # 裸用：@unsafe
+    if callable(group):
+        return register(group, unsafe_group=UNSAFE_GROUP_WRITE)
+
+    # 带类别：@unsafe("python")
+    def decorator(func):
+        return register(func, unsafe_group=group)
+
+    return decorator
 
 
 def ext(group: str):
@@ -292,6 +316,10 @@ __all__ = [
     "McpHttpRequestHandler",
     "MCP_SERVER",
     "MCP_UNSAFE",
+    "MCP_UNSAFE_GROUPS",
+    "UNSAFE_GROUP_DEBUGGER",
+    "UNSAFE_GROUP_PYTHON",
+    "UNSAFE_GROUP_WRITE",
     "MCP_EXTENSIONS",
     "tool",
     "unsafe",

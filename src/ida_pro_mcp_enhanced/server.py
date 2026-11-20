@@ -142,17 +142,49 @@ def _create_ida_tool_wrapper(tool_def: ToolDef):
     return wrapper
 
 
-def _register_ida_tools(enable_unsafe: bool = False):
-    """Register all IDA-side tools as broker-routed MCP tool placeholders."""
+UNSAFE_GROUP_WILDCARD = "all"
+
+
+def _unsafe_group_enabled(tool_def, enabled_groups: set[str]) -> bool:
+    """这个 unsafe 工具是否被点名的类别放行。
+
+    非 unsafe 工具永远放行；unsafe 工具只有在它的类别（或 "all"）被显式
+    启用时才放行。类别缺失（旧式裸 @unsafe 且 AST 没解析出类别）按 
+    "write" 处理，保持与历史行为一致。
+    """
+    if not tool_def.is_unsafe:
+        return True
+    if UNSAFE_GROUP_WILDCARD in enabled_groups:
+        return True
+    group = tool_def.unsafe_group or "write"
+    return group in enabled_groups
+
+
+def _register_ida_tools(enable_unsafe: bool = False, unsafe_groups: set[str] | None = None):
+    """Register all IDA-side tools as broker-routed MCP tool placeholders.
+
+    ``unsafe_groups`` 允许只开放某一类危险工具（例如只要 python 执行，
+    不必把 22 个调试器工具一起放出来）。传 ``enable_unsafe=True`` 等价于
+    开启全部类别。
+    """
     global IDA_TOOLS, _UNSAFE_ENABLED
     _UNSAFE_ENABLED = enable_unsafe
 
+    groups = set(unsafe_groups or ())
+    # 只有"裸 --unsafe"（开了但没有点名类别）才是全开；
+    # `--unsafe python` 必须只开 python，否则分组就形同虚设。
+    if enable_unsafe and not groups:
+        groups.add(UNSAFE_GROUP_WILDCARD)
+
     registered_count = 0
     skipped_unsafe = 0
+    skipped_by_group: dict[str, int] = {}
 
     for tool_def in _IDA_TOOLS:
-        if tool_def.is_unsafe and not enable_unsafe:
+        if not _unsafe_group_enabled(tool_def, groups):
             skipped_unsafe += 1
+            group = tool_def.unsafe_group or "write"
+            skipped_by_group[group] = skipped_by_group.get(group, 0) + 1
             continue
 
         IDA_TOOLS.add(tool_def.name)
@@ -160,9 +192,11 @@ def _register_ida_tools(enable_unsafe: bool = False):
         registered_count += 1
 
     if skipped_unsafe > 0:
+        detail = ", ".join(f"{k}:{v}" for k, v in sorted(skipped_by_group.items()))
         print(
             f"[MCP] 注册了 {registered_count} 个 IDA 工具 "
-            f"(跳过 {skipped_unsafe} 个 unsafe 工具)",
+            f"(跳过 {skipped_unsafe} 个 unsafe 工具；{detail}；"
+            f"用 --unsafe <类别> 开放)",
             file=sys.stderr,
         )
     else:
@@ -198,7 +232,18 @@ def main():
     parser.add_argument("--uninstall", action="store_true", help="卸载 IDA 插件和 MCP 客户端配置")
     parser.add_argument("--allow-ida-free", action="store_true", help="允许安装到 IDA Free")
     parser.add_argument("--config", action="store_true", help="打印 MCP 配置")
-    parser.add_argument("--unsafe", action="store_true", help="启用不安全工具（调试器相关）")
+    parser.add_argument(
+        "--unsafe",
+        nargs="*",
+        default=None,
+        metavar="GROUP",
+        help=(
+            "启用不安全工具。不带值 = 全部开放；也可只点名类别："
+            "debugger（dbg_*）、python（py_eval/py_exec_file）、"
+            "write（idb_save/diff_before_after）。"
+            "例：--unsafe python"
+        ),
+    )
     parser.add_argument("--port", type=int, default=13337, help="HTTP 服务器端口（Broker 模式）")
     parser.add_argument(
         "--broker",
@@ -213,7 +258,14 @@ def main():
     )
     args = parser.parse_args()
 
-    _register_ida_tools(enable_unsafe=args.unsafe)
+    raw_unsafe = getattr(args, "unsafe", None)
+    # --unsafe        -> []      （裸用，全开）
+    # --unsafe python -> ["python"]
+    unsafe_groups = set(raw_unsafe or ())
+    _register_ida_tools(
+        enable_unsafe=raw_unsafe is not None,
+        unsafe_groups=unsafe_groups,
+    )
     _register_ida_resources()
 
     if args.install:

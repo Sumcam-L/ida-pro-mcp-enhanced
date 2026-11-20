@@ -1285,7 +1285,16 @@ def main() -> None:
         action="store_true",
         help="Enable strict per-transport database binding isolation.",
     )
-    parser.add_argument("--unsafe", action="store_true", help="Enable unsafe worker tools (DANGEROUS)")
+    parser.add_argument(
+        "--unsafe",
+        nargs="*",
+        default=None,
+        metavar="GROUP",
+        help=(
+            "Enable unsafe worker tools (DANGEROUS). No value = all; "
+            "or name groups: debugger / python / write."
+        ),
+    )
     parser.add_argument(
         "--profile",
         type=Path,
@@ -1305,13 +1314,16 @@ def main() -> None:
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO)
 
     global _UNSAFE_ENABLED, supervisor
-    _UNSAFE_ENABLED = bool(args.unsafe)
+    _UNSAFE_ENABLED = args.unsafe is not None
 
     worker_args: list[str] = []
     if args.verbose:
         worker_args.append("--verbose")
-    if args.unsafe:
+    if args.unsafe is not None:
+        # --unsafe          -> ["--unsafe"]           (all groups)
+        # --unsafe python   -> ["--unsafe", "python"]
         worker_args.append("--unsafe")
+        worker_args.extend(args.unsafe)
     if args.profile is not None:
         worker_args.extend(["--profile", str(args.profile)])
 

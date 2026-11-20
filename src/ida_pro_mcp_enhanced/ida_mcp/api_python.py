@@ -109,7 +109,7 @@ class PythonExecResult(TypedDict):
 
 @tool
 @idasync
-@unsafe
+@unsafe("python")
 def py_eval(
     code: Annotated[str, "Python code"],
 ) -> PythonExecResult:
@@ -201,7 +201,7 @@ def py_eval(
 
 @tool
 @idasync
-@unsafe
+@unsafe("python")
 def py_exec_file(
     file_path: Annotated[str, "Absolute path to a Python script to execute"],
 ) -> PythonExecResult:

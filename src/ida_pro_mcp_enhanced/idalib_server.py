@@ -19,7 +19,7 @@ from typing import Annotated, Any, NotRequired, Optional, TypedDict
 import idapro
 import ida_loader
 
-from ida_pro_mcp_enhanced.ida_mcp import MCP_SERVER, MCP_UNSAFE
+from ida_pro_mcp_enhanced.ida_mcp import MCP_SERVER, MCP_UNSAFE, MCP_UNSAFE_GROUPS
 from ida_pro_mcp_enhanced.ida_mcp.api_core import (
     ServerHealthResult,
     ServerWarmupResult,
@@ -567,7 +567,14 @@ def main():
         ),
     )
     parser.add_argument(
-        "--unsafe", action="store_true", help="Enable unsafe functions (DANGEROUS)"
+        "--unsafe",
+        nargs="*",
+        default=None,
+        metavar="GROUP",
+        help=(
+            "Enable unsafe functions (DANGEROUS). No value = all; "
+            "or name groups: debugger / python / write."
+        ),
     )
     parser.add_argument(
         "--profile",
@@ -657,12 +664,26 @@ def main():
         MCP_SERVER.tools.methods.pop(name, None)
     logger.info("GUI-plugin routing tools disabled under idalib")
 
-    # Gate unsafe tools: remove them from the registry unless --unsafe is set.
-    if not args.unsafe:
-        for name in MCP_UNSAFE:
-            MCP_SERVER.tools.methods.pop(name, None)
-        if MCP_UNSAFE:
-            logger.info("Unsafe tools disabled (start with --unsafe to enable)")
+    # Gate unsafe tools: drop the ones whose group was not explicitly enabled.
+    # --unsafe (no value) keeps every group; --unsafe python keeps only python.
+    enabled_groups = set(args.unsafe or ())
+    enable_all = args.unsafe is not None and not enabled_groups
+    if not enable_all:
+        removed = 0
+        for name in sorted(MCP_UNSAFE):
+            group = MCP_UNSAFE_GROUPS.get(name, "write")
+            if group in enabled_groups:
+                continue
+            if MCP_SERVER.tools.methods.pop(name, None) is not None:
+                removed += 1
+        if removed:
+            detail = ", ".join(sorted(enabled_groups)) or "none"
+            logger.info(
+                "Unsafe tools disabled: %d removed (enabled groups: %s; "
+                "start with --unsafe <group> to enable)",
+                removed,
+                detail,
+            )
 
     if args.profile is not None:
         try:

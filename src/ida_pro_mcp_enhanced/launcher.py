@@ -138,7 +138,27 @@ class LauncherConfig:
             "--broker",
             "--port",
             str(self.broker_port),
+            *self.unsafe_args,
         ]
+
+    @property
+    def unsafe_args(self) -> list[str]:
+        """把 IDA_MCP_UNSAFE 翻译成 --unsafe 参数。
+
+        环境变量取值：
+          （未设）        -> 不开放任何 unsafe 工具
+          "all"           -> --unsafe          （全部开放）
+          "python,write"  -> --unsafe python write
+
+        插件（DSH/opencode/Claude Desktop）只能传环境变量，所以这里做翻译。
+        """
+        raw = os.environ.get("IDA_MCP_UNSAFE", "").strip()
+        if not raw:
+            return []
+        if raw.lower() == "all":
+            return ["--unsafe"]
+        groups = [g.strip() for g in raw.split(",") if g.strip()]
+        return ["--unsafe", *groups] if groups else ["--unsafe"]
 
     @property
     def stdio_command(self) -> list[str]:

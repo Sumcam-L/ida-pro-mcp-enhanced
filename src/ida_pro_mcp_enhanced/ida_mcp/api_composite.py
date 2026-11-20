@@ -444,7 +444,7 @@ _VALID_ACTIONS = frozenset({"rename_func", "set_type", "set_comment"})
 
 
 @tool
-@unsafe
+@unsafe("write")
 @idasync
 @tool_timeout(120.0)
 def diff_before_after(

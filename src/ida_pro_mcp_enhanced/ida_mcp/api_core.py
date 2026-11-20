@@ -848,7 +848,7 @@ def imports_query(
 
 @tool
 @idasync
-@unsafe
+@unsafe("write")
 def idb_save(
     path: Annotated[str, "Optional destination path (default: current IDB path)"] = "",
 ) -> IdbSaveResult:

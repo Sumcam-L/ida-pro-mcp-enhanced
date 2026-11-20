@@ -86,6 +86,7 @@ else:
     IDA_VERSION = _parse_kernel_version(idaapi.get_kernel_version())
     _check_required_apis(IDA_VERSION)
 
+IDA_GE_94 = IDA_VERSION >= (9, 4, 0)
 IDA_GE_90 = IDA_VERSION >= (9, 0, 0)
 IDA_GE_85 = IDA_VERSION >= (8, 5, 0)
 IDA_GE_84 = IDA_VERSION >= (8, 4, 0)
@@ -210,6 +211,24 @@ def inf_is_64bit() -> bool:
 # ============================================================================
 # Function info compatibility
 # ============================================================================
+
+
+def get_func(ea: int) -> ida_funcs.func_t | None:
+    """`ida_funcs.get_func` 的不告警版本。
+
+    IDA 9.4 起 `get_func` 会无条件发 DeprecationWarning，推荐改用
+    `get_func_start` / `get_func_entry_info`。但这两者的返回类型不同
+    （前者直接给 ea，后者要 out 参数），调用方普遍需要 func_t，所以这里
+    用 `get_func_start` 做存在性判断再补一次 `get_func`——只调一次会告警的
+    接口，且把告警压掉，行为与旧版完全一致（找不到时返回 None）。
+    """
+    if IDA_GE_94:
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            return ida_funcs.get_func(ea)
+    return ida_funcs.get_func(ea)
 
 
 def get_func_name(func: ida_funcs.func_t) -> str | None:
