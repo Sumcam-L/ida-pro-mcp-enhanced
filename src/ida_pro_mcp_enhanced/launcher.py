@@ -168,6 +168,9 @@ class LauncherConfig:
             "ida_pro_mcp_enhanced.server",
             "--broker-url",
             self.broker_url,
+            # stdio server 自己维护一份工具表（tools/list 用它的，不是 broker 的），
+            # 所以 unsafe 开关必须同时传给它，否则 broker 有 py_eval 而客户端看不到。
+            *self.unsafe_args,
         ]
 
 

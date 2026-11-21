@@ -167,5 +167,48 @@ class UnsafeEnvTranslationTests(unittest.TestCase):
         self.assertNotIn("--unsafe", self._cfg.broker_command)
 
 
+class StdioCommandForwardingTests(unittest.TestCase):
+    """The stdio server keeps its own tool table, so it needs the flag too.
+
+    The broker can happily expose py_eval while a client still sees 63 tools,
+    because tools/list is answered by the stdio server's own registry. That
+    mismatch is invisible unless something compares the two.
+    """
+
+    def setUp(self):
+        import os
+        self._saved = os.environ.get("IDA_MCP_UNSAFE")
+        self._cfg = launcher.LauncherConfig()
+
+    def tearDown(self):
+        import os
+        if self._saved is None:
+            os.environ.pop("IDA_MCP_UNSAFE", None)
+        else:
+            os.environ["IDA_MCP_UNSAFE"] = self._saved
+
+    def test_stdio_command_forwards_groups(self):
+        import os
+        os.environ["IDA_MCP_UNSAFE"] = "python"
+        cmd = self._cfg.stdio_command
+        self.assertIn("--unsafe", cmd)
+        self.assertIn("python", cmd)
+
+    def test_stdio_command_clean_by_default(self):
+        import os
+        os.environ.pop("IDA_MCP_UNSAFE", None)
+        self.assertNotIn("--unsafe", self._cfg.stdio_command)
+
+    def test_stdio_and_broker_agree_on_groups(self):
+        import os
+        for raw in ("", "all", "python", "python,write"):
+            os.environ["IDA_MCP_UNSAFE"] = raw
+            self.assertEqual(
+                self._cfg.unsafe_args,
+                [a for a in self._cfg.stdio_command if a == "--unsafe" or a in ("all", "python", "write", "debugger")],
+                f"mismatch for IDA_MCP_UNSAFE={raw!r}",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
