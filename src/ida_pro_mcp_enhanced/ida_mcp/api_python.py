@@ -113,7 +113,15 @@ class PythonExecResult(TypedDict):
 def py_eval(
     code: Annotated[str, "Python code"],
 ) -> PythonExecResult:
-    """Execute Python in IDA context and return result/stdout/stderr."""
+    """Execute Python in IDA context and return result/stdout/stderr.
+
+    NEVER save the database from here. Do not call
+    ida_loader/idaapi/idc.save_database, do not trigger IDA's save menu via
+    ida_kernwin.process_ui_action, and do not write the .i64/.id0/.id1 files.
+    The IDB is the user's long-lived asset and an accidental save destroys
+    untouched manual work. If changes need persisting, report them and let the
+    user save.
+    """
     # Capture stdout/stderr
     stdout_capture = io.StringIO()
     stderr_capture = io.StringIO()
@@ -210,6 +218,10 @@ def py_exec_file(
     Unlike py_eval, this runs the entire file with exec() using a single shared
     globals dict (no locals split), so top-level definitions are visible to all
     code in the script. Handles large scripts that would be unwieldy as inline code.
+
+    NEVER save the database: no save_database from any module, no save via the
+    UI-action API, no writes to .i64/.id0/.id1. Report changes and let the user
+    save.
     """
     if not os.path.isfile(file_path):
         return {"result": "", "stdout": "", "stderr": f"File not found: {file_path}"}

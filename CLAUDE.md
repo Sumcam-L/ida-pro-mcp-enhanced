@@ -56,16 +56,38 @@ def my_api(addrs: Annotated[str, "Addresses (0x401000, main) or list"]) -> list[
 - Use shared pagination / filtering helpers from `utils.py`
 
 ### Unsafe operations
-Debugger or destructive operations should be marked unsafe:
+Debugger or destructive operations should be marked unsafe. `@unsafe` takes a
+category so a server can open only one kind (`--unsafe python`):
 ```python
 from .rpc import tool, unsafe
 
-@unsafe
 @tool
+@unsafe("write")      # debugger / python / write
 @idasync
 def dangerous_op(...):
     ...
 ```
+
+### 数据库写盘：绝对禁止
+
+**没有任何 MCP 工具应当保存数据库。** `idb_save` / `idalib_save` 被
+`@unsafe("write")` 门控，但门控只是默认值 —— 真正的约束是这条规则。
+
+原因：`py_eval` / `py_exec_file` 是完整的 Python 解释器，`ida_loader`、
+`ctypes`、`subprocess` 全都在手边。任何"工具层面"的拦截都能在同一个
+解释器里被绕过：
+
+```python
+# 这些都通，工具门控拦不住
+import ida_loader; ida_loader.save_database(path, 0)
+import importlib; importlib.reload(ida_loader)   # 恢复被改的函数
+import ctypes                                     # 直接调 Win32
+```
+
+所以保护只能来自行为约束。改动一律只留在内存里，由用户自己保存。
+
+补充：`ida_loader.save_database` 在部分 IDA 版本上会阻塞主线程，
+把实例卡到 `Responding=False`（已实测复现），这也是不能用的理由之一。
 
 ## Development commands
 

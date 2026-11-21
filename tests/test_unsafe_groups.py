@@ -210,5 +210,49 @@ class StdioCommandForwardingTests(unittest.TestCase):
             )
 
 
+class NoSavePolicyTests(unittest.TestCase):
+    """The no-save rule must be visible where the model actually reads it.
+
+A tool-level gate cannot enforce this: py_eval is a full interpreter with
+ida_loader, ctypes and subprocess in reach, so "idb_save is not listed"
+protects nothing. The only durable guard is telling the model, in the two
+places it reads (the tool description and the repo rules), that saving is
+forbidden. These tests keep that text from being edited away.
+    """
+
+    @staticmethod
+    def _descriptions():
+        tools, _ = parse_all_api_files(str(_API_DIR))
+        return {t.name: t.description for t in tools}
+
+    def test_py_eval_forbids_saving(self):
+        desc = self._descriptions()["py_eval"]
+        self.assertIn("NEVER save", desc)
+        self.assertIn("save_database", desc)
+
+    def test_py_exec_file_forbids_saving(self):
+        desc = self._descriptions()["py_exec_file"]
+        self.assertIn("NEVER save", desc)
+
+    def test_idb_save_documents_the_hazard(self):
+        desc = self._descriptions()["idb_save"]
+        self.assertIn("Unsafe", desc)
+
+    def test_repo_rules_carry_the_ban(self):
+        rules = (_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertIn("数据库写盘：绝对禁止", rules)
+        self.assertIn("save_database", rules)
+
+    def test_global_rules_carry_the_ban(self):
+        import os
+        import pathlib
+        p = pathlib.Path(os.path.expanduser("~")) / ".dsh" / "AGENTS.md"
+        if not p.is_file():
+            self.skipTest("no global AGENTS.md on this machine")
+        rules = p.read_text(encoding="utf-8")
+        self.assertIn("绝对不要保存数据库", rules)
+
+
+
 if __name__ == "__main__":
     unittest.main()
